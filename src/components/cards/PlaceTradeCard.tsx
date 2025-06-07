@@ -203,12 +203,15 @@ export function PlaceTradeCard() {
               type="number"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
-              placeholder="e.g., 0.001"
+              placeholder="e.g., 0.001 for BTC, 0.1 for ETH"
               step="any"
               disabled={isLoading}
               className="mt-1"
               required
             />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Note: Binance Testnet often requires a minimum order value of ~20 USDT (Quantity x Price).
+            </p>
           </div>
           <Button type="submit" disabled={isLoading || isLoadingSymbols || !symbol} className="w-full">
             {isLoading ? <Loader2 className="animate-spin mr-2" /> : null}
