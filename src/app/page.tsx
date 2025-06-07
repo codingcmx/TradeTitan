@@ -1,12 +1,14 @@
+
 import { Header } from '@/components/layout/Header';
 import { RealtimeTradesCard } from '@/components/cards/RealtimeTradesCard';
 import { TradeHistoryCard } from '@/components/cards/TradeHistoryCard';
 import { BotConfigCard } from '@/components/cards/BotConfigCard';
 import { BotLogsCard } from '@/components/cards/BotLogsCard';
 import { StatCard } from '@/components/cards/StatCard';
-import { AccountBalanceCard } from '@/components/cards/AccountBalanceCard'; // New import
+import { AccountBalanceCard } from '@/components/cards/AccountBalanceCard';
+import { PlaceTradeCard } from '@/components/cards/PlaceTradeCard'; // New import
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, History, Settings, ListChecks, DollarSign, Percent, BarChart2 } from 'lucide-react';
+import { TrendingUp, History, Settings, ListChecks, DollarSign, Percent, BarChart2, Send } from 'lucide-react'; // Added Send icon
 import { getKeyMetrics } from '@/lib/firestoreService'; 
 import type { KeyMetric } from '@/types';
 
@@ -24,8 +26,8 @@ export default async function DashboardPage() {
     <div className="flex min-h-screen w-full flex-col bg-background">
       <Header />
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"> {/* Adjusted grid to lg:grid-cols-4 */}
-          <AccountBalanceCard /> {/* Added AccountBalanceCard */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <AccountBalanceCard />
           {summaryStats.map((stat) => (
             <StatCard 
               key={stat.label} 
@@ -39,9 +41,12 @@ export default async function DashboardPage() {
         </div>
 
         <Tabs defaultValue="live" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-4 bg-card border border-border shadow-sm">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 mb-4 bg-card border border-border shadow-sm"> {/* Adjusted to 5 cols */}
             <TabsTrigger value="live" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
               <TrendingUp className="mr-2 h-5 w-5" /> Live View
+            </TabsTrigger>
+            <TabsTrigger value="actions" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground"> {/* New Actions Tab */}
+              <Send className="mr-2 h-5 w-5" /> Actions
             </TabsTrigger>
             <TabsTrigger value="history" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
               <History className="mr-2 h-5 w-5" /> Trade History
@@ -55,7 +60,14 @@ export default async function DashboardPage() {
           </TabsList>
 
           <TabsContent value="live">
-            <RealtimeTradesCard />
+            <div className="grid gap-4 md:grid-cols-1"> {/* Wrapped RealtimeTradesCard to allow PlaceTradeCard alongside or within */}
+               <RealtimeTradesCard />
+            </div>
+          </TabsContent>
+          <TabsContent value="actions"> {/* New Actions Tab Content */}
+            <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
+                <PlaceTradeCard />
+            </div>
           </TabsContent>
           <TabsContent value="history">
             {/* @ts-expect-error Server Component */}
@@ -77,3 +89,4 @@ export default async function DashboardPage() {
     </div>
   );
 }
+
