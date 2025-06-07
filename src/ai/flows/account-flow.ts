@@ -43,7 +43,7 @@ const getAccountBalanceFlow = ai.defineFlow(
       APIKEY: apiKey,
       APISECRET: apiSecret,
       // Set to true to use the Binance Testnet
-      // test: true 
+      test: true 
     });
 
     try {
