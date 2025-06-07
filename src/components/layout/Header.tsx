@@ -2,8 +2,27 @@ import Link from 'next/link';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { Bot } from 'lucide-react';
+import { getBotConfiguration } from '@/lib/firestoreService';
+import type { BotConfig } from '@/types';
 
-export function Header() {
+export async function Header() {
+  let isBotOnline = false;
+  let botStatusText = "Offline";
+  let botStatusColor = "text-red-400"; // Default to Offline color
+
+  try {
+    const config: BotConfig = await getBotConfiguration();
+    isBotOnline = Boolean(config.tradingEnabled); // Handles undefined as false
+    
+    if (isBotOnline) {
+      botStatusText = "Online";
+      botStatusColor = "text-green-400";
+    }
+  } catch (error) {
+    console.error("Error fetching bot status for header:", error);
+    // Keep default offline status if there's an error
+  }
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 max-w-screen-2xl items-center justify-between">
@@ -13,7 +32,7 @@ export function Header() {
         <div className="flex items-center space-x-2">
           <Button variant="ghost" size="sm" className="text-muted-foreground">
             <Bot className="mr-2 h-4 w-4" />
-            Bot Status: <span className="ml-1 font-semibold text-green-400">Online</span>
+            Bot Status: <span className={`ml-1 font-semibold ${botStatusColor}`}>{botStatusText}</span>
           </Button>
           {/* Add more header items if needed, e.g., user profile */}
         </div>
