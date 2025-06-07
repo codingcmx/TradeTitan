@@ -49,3 +49,8 @@ export interface AccountBalance {
   totalEquity: number; // Example of another balance metric
   // Add other relevant balance fields here
 }
+
+export interface CustomStrategyDoc {
+  pineScript?: string;
+  explanation?: string;
+}

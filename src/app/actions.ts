@@ -1,8 +1,8 @@
 
 'use server';
 
-import { updateBotConfiguration, getBotConfiguration } from '@/lib/firestoreService';
-import type { BotConfig } from '@/types';
+import { updateBotConfiguration, getBotConfiguration, updateCustomStrategyDoc } from '@/lib/firestoreService';
+import type { BotConfig, CustomStrategyDoc } from '@/types';
 import { revalidatePath } from 'next/cache';
 
 export async function saveBotConfigurationAction(
@@ -46,6 +46,30 @@ export async function saveBotConfigurationAction(
     }
   } catch (error: any) {
     console.error('Error in saveBotConfigurationAction:', error);
+    return { success: false, message: error.message || 'An unexpected error occurred.' };
+  }
+}
+
+
+export async function saveCustomStrategyDocAction(
+  formData: FormData
+): Promise<{ success: boolean; message: string; updatedDoc?: CustomStrategyDoc }> {
+  try {
+    const strategyDoc: CustomStrategyDoc = {
+      pineScript: formData.get('pineScript') as string || '',
+      explanation: formData.get('explanation') as string || '',
+    };
+
+    const result = await updateCustomStrategyDoc(strategyDoc);
+
+    if (result.success) {
+      revalidatePath('/'); // Revalidate relevant paths
+      return { success: true, message: 'Strategy document saved successfully!', updatedDoc: strategyDoc };
+    } else {
+      return { success: false, message: result.message || 'Failed to save strategy document.' };
+    }
+  } catch (error: any) {
+    console.error('Error in saveCustomStrategyDocAction:', error);
     return { success: false, message: error.message || 'An unexpected error occurred.' };
   }
 }

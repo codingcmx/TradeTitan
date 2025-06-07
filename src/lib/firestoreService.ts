@@ -1,5 +1,5 @@
 
-import type { Trade, BotLog, BotConfig } from '@/types';
+import type { Trade, BotLog, BotConfig, CustomStrategyDoc } from '@/types';
 import { db } from './firebase'; 
 import { collection, getDocs, query, orderBy, limit, doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -133,4 +133,39 @@ export async function getKeyMetrics(): Promise<{ totalPnl: number; winRate: numb
     winRate: parseFloat(winRate.toFixed(2)),
     totalTrades: trades.length,
   };
+}
+
+// Functions for Custom Strategy Document
+export async function getCustomStrategyDoc(): Promise<CustomStrategyDoc> {
+  if (!db) {
+    console.warn("Firestore is not initialized. Returning empty custom strategy document.");
+    return Promise.resolve({ pineScript: '', explanation: '' });
+  }
+  try {
+    const docRef = doc(db, 'custom_strategy_doc', 'main');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as CustomStrategyDoc;
+    } else {
+      return { pineScript: '', explanation: '' }; // Default if not found
+    }
+  } catch (error) {
+    console.error("Error fetching custom strategy document from Firestore:", error);
+    return Promise.resolve({ pineScript: '', explanation: '' });
+  }
+}
+
+export async function updateCustomStrategyDoc(docData: CustomStrategyDoc): Promise<{success: boolean; message?: string}> {
+  if (!db) {
+    console.error("Firestore is not initialized. Cannot update custom strategy document.");
+    return { success: false, message: "Firestore is not initialized." };
+  }
+  try {
+    const docRef = doc(db, 'custom_strategy_doc', 'main');
+    await setDoc(docRef, docData, { merge: true });
+    return { success: true, message: "Custom strategy document updated successfully." };
+  } catch (error: any) {
+    console.error("Error updating custom strategy document in Firestore:", error);
+    return { success: false, message: `Failed to update custom strategy document: ${error.message}` };
+  }
 }

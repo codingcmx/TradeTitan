@@ -3,13 +3,14 @@ import { Header } from '@/components/layout/Header';
 import { RealtimeTradesCard } from '@/components/cards/RealtimeTradesCard';
 import { TradeHistoryCard } from '@/components/cards/TradeHistoryCard';
 import { BotConfigCard } from '@/components/cards/BotConfigCard';
-import { StrategyAssistantCard } from '@/components/cards/StrategyAssistantCard'; // New
+import { StrategyAssistantCard } from '@/components/cards/StrategyAssistantCard';
 import { BotLogsCard } from '@/components/cards/BotLogsCard';
 import { StatCard } from '@/components/cards/StatCard';
 import { AccountBalanceCard } from '@/components/cards/AccountBalanceCard';
 import { PlaceTradeCard } from '@/components/cards/PlaceTradeCard';
+import { CustomStrategyDocCard } from '@/components/cards/CustomStrategyDocCard'; // New
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, History, Settings, ListChecks, DollarSign, Percent, BarChart2, Send, Lightbulb } from 'lucide-react';
+import { TrendingUp, History, Settings, ListChecks, DollarSign, Percent, BarChart2, Send, Lightbulb, Combine } from 'lucide-react';
 import { getKeyMetrics } from '@/lib/firestoreService'; 
 import type { KeyMetric } from '@/types';
 
@@ -42,7 +43,7 @@ export default async function DashboardPage() {
         </div>
 
         <Tabs defaultValue="live" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 mb-4 bg-card border border-border shadow-sm">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 mb-4 bg-card border border-border shadow-sm">
             <TabsTrigger value="live" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
               <TrendingUp className="mr-2 h-5 w-5" /> Live View
             </TabsTrigger>
@@ -51,6 +52,9 @@ export default async function DashboardPage() {
             </TabsTrigger>
             <TabsTrigger value="history" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
               <History className="mr-2 h-5 w-5" /> Trade History
+            </TabsTrigger>
+             <TabsTrigger value="strategyLab" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
+              <Combine className="mr-2 h-5 w-5" /> Strategy Lab
             </TabsTrigger>
             <TabsTrigger value="config" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
               <Settings className="mr-2 h-5 w-5" /> Configuration
@@ -73,6 +77,12 @@ export default async function DashboardPage() {
           <TabsContent value="history">
             {/* @ts-expect-error Server Component */}
             <TradeHistoryCard />
+          </TabsContent>
+          <TabsContent value="strategyLab">
+            <div className="grid gap-4 md:grid-cols-1">
+              {/* @ts-expect-error Server Component */}
+              <CustomStrategyDocCard />
+            </div>
           </TabsContent>
           <TabsContent value="config">
             <div className="grid gap-8 md:grid-cols-1 lg:grid-cols-2">
