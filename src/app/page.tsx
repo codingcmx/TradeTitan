@@ -4,9 +4,10 @@ import { TradeHistoryCard } from '@/components/cards/TradeHistoryCard';
 import { BotConfigCard } from '@/components/cards/BotConfigCard';
 import { BotLogsCard } from '@/components/cards/BotLogsCard';
 import { StatCard } from '@/components/cards/StatCard';
+import { AccountBalanceCard } from '@/components/cards/AccountBalanceCard'; // New import
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingUp, History, Settings, ListChecks, DollarSign, Percent, BarChart2 } from 'lucide-react';
-import { getKeyMetrics } from '@/lib/firestoreService'; // Assuming this fetches PnL, Win Rate etc.
+import { getKeyMetrics } from '@/lib/firestoreService'; 
 import type { KeyMetric } from '@/types';
 
 
@@ -23,7 +24,8 @@ export default async function DashboardPage() {
     <div className="flex min-h-screen w-full flex-col bg-background">
       <Header />
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"> {/* Adjusted grid to lg:grid-cols-4 */}
+          <AccountBalanceCard /> {/* Added AccountBalanceCard */}
           {summaryStats.map((stat) => (
             <StatCard 
               key={stat.label} 

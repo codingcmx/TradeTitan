@@ -41,3 +41,9 @@ export interface KeyMetric {
   change?: string; // e.g., "+5%"
   changeType?: 'positive' | 'negative' | 'neutral';
 }
+
+export interface AccountBalance {
+  usdtBalance: number;
+  totalEquity: number; // Example of another balance metric
+  // Add other relevant balance fields here
+}
