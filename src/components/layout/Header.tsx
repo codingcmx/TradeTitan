@@ -11,16 +11,24 @@ export async function Header() {
   let botStatusColor = "text-red-400"; // Default to Offline color
 
   try {
+    // Fetch the latest bot configuration on the server
     const config: BotConfig = await getBotConfiguration();
-    isBotOnline = Boolean(config.tradingEnabled); // Handles undefined as false
+    // Determine bot status based on the tradingEnabled flag
+    // Boolean(undefined) is false, Boolean(null) is false, Boolean(false) is false, Boolean(true) is true
+    isBotOnline = Boolean(config.tradingEnabled); 
     
     if (isBotOnline) {
       botStatusText = "Online";
       botStatusColor = "text-green-400";
     }
+    // If config.tradingEnabled is false, null, or undefined,
+    // it defaults to "Offline" and "text-red-400" as initialized.
   } catch (error) {
     console.error("Error fetching bot status for header:", error);
-    // Keep default offline status if there's an error
+    // Keep default offline status if there's an error during fetch
+    isBotOnline = false; // Ensure it's marked offline on error
+    botStatusText = "Offline";
+    botStatusColor = "text-red-400";
   }
 
   return (
