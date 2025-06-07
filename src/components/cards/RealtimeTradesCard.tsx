@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -8,13 +9,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Trade } from '@/types';
 import { ArrowUpRight, ArrowDownRight, AlertTriangle } from 'lucide-react';
 import { Skeleton } from "@/components/ui/skeleton";
-// import { db } from '@/lib/firebase'; // Uncomment when Firebase is fully set up
-// import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore'; // Uncomment for Firebase
-
-const mockRealtimeTrades: Trade[] = [
-  { id: 'rt1', symbol: 'BTC/USDT', type: 'BUY', entryPrice: 60000, quantity: 0.1, status: 'OPEN', timestampOpen: new Date(Date.now() - 1000 * 60 * 5), strategy: 'EMA Cross' },
-  { id: 'rt2', symbol: 'ETH/USDT', type: 'SELL', entryPrice: 3000, quantity: 1.5, status: 'OPEN', timestampOpen: new Date(Date.now() - 1000 * 60 * 2), strategy: 'ATR Breakout' },
-];
+import { db } from '@/lib/firebase'; 
+import { collection, query, where, orderBy, limit, onSnapshot, Timestamp } from 'firebase/firestore';
 
 export function RealtimeTradesCard() {
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -22,28 +18,36 @@ export function RealtimeTradesCard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Simulate fetching data or setting up a listener
-    const timer = setTimeout(() => {
-      setTrades(mockRealtimeTrades);
-      setLoading(false);
-    }, 1500);
-
-    return () => clearTimeout(timer);
-
-    // TODO: Implement Firebase Firestore listener for real-time updates
-    /*
     if (!db) {
       setError("Firebase is not configured. Real-time updates are disabled.");
       setLoading(false);
       return;
     }
+
+    setLoading(true);
     const tradesRef = collection(db, 'trades');
-    const q = query(tradesRef, orderBy('timestampOpen', 'desc'), limit(10));
+    // Query for trades that are 'OPEN' or recently closed (e.g., within the last hour)
+    // Adjust the time window as needed. For truly "live", 'OPEN' status is key.
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const q = query(
+      tradesRef, 
+      where('status', '==', 'OPEN'), // Primarily show open trades
+      // You could add another query for recently closed ones if desired, but that might need multiple queries or different logic.
+      // For simplicity, focusing on 'OPEN' trades for "Real-time".
+      orderBy('timestampOpen', 'desc'), 
+      limit(10)
+    );
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const newTrades: Trade[] = [];
       querySnapshot.forEach((doc) => {
-        newTrades.push({ id: doc.id, ...doc.data() } as Trade);
+        const data = doc.data();
+        newTrades.push({ 
+          id: doc.id, 
+          ...data,
+          timestampOpen: (data.timestampOpen as Timestamp)?.toDate ? (data.timestampOpen as Timestamp).toDate() : new Date(data.timestampOpen),
+          timestampClose: (data.timestampClose as Timestamp)?.toDate ? (data.timestampClose as Timestamp).toDate() : data.timestampClose ? new Date(data.timestampClose) : undefined,
+        } as Trade);
       });
       setTrades(newTrades);
       setLoading(false);
@@ -55,20 +59,19 @@ export function RealtimeTradesCard() {
     });
 
     return () => unsubscribe();
-    */
   }, []);
 
   const getStatusBadgeVariant = (status: Trade['status']) => {
-    if (status === 'OPEN') return 'default'; // Blueish
-    if (status.includes('WIN')) return 'secondary'; // Greenish by theme
-    if (status.includes('LOSS')) return 'destructive'; // Reddish
+    if (status === 'OPEN') return 'default'; 
+    if (status.includes('WIN')) return 'secondary'; 
+    if (status.includes('LOSS')) return 'destructive'; 
     return 'outline';
   };
 
   const formatPrice = (price: number | undefined) => price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '-';
-  const formatTime = (date: Date | undefined) => date?.toLocaleTimeString() || '-';
+  const formatTime = (date: Date | undefined) => date?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) || '-';
 
-  if (error) {
+  if (error && !loading) { // Only show main error if not initially loading
     return (
       <Card>
         <CardHeader>
@@ -91,7 +94,7 @@ export function RealtimeTradesCard() {
         <CardDescription>Live market activity from your strategy.</CardDescription>
       </CardHeader>
       <CardContent className="flex-grow overflow-hidden">
-        <ScrollArea className="h-[300px] pr-4"> {/* Adjust height as needed */}
+        <ScrollArea className="h-[300px] pr-4">
           {loading ? (
             <div className="space-y-4">
               {[...Array(3)].map((_, i) => (
