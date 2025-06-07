@@ -150,7 +150,7 @@ export function BotConfigCard() {
                 disabled={isPending}
               />
             </Label>
-            <p className="text-xs text-muted-foreground mt-1">Enable or disable all trading activity.</p>
+            <p className="text-xs text-muted-foreground mt-1">Enable or disable all trading activity. The bot will remain in this state until manually changed.</p>
           </div>
 
           <div>
