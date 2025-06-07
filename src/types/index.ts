@@ -1,3 +1,4 @@
+
 export interface Trade {
   id: string;
   symbol: string;
@@ -21,10 +22,9 @@ export interface BotLog {
 }
 
 export interface BotConfig {
-  [key: string]: string | number | boolean | string[] | undefined; // Allow arrays for things like symbols
   botName?: string;
   version?: string;
-  targetSymbols?: string[];
+  targetSymbols?: string[]; // Updated to string[]
   emaShortPeriod?: number;
   emaMediumPeriod?: number;
   emaLongPeriod?: number;
@@ -33,6 +33,8 @@ export interface BotConfig {
   takeProfitMultiplier?: number;
   tradingEnabled?: boolean;
   telegramChatId?: string;
+  // Allow any other string-keyed properties for flexibility
+  [key: string]: string | number | boolean | string[] | undefined;
 }
 
 export interface KeyMetric {

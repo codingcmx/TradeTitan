@@ -1,7 +1,7 @@
 
 import type { Trade, BotLog, BotConfig } from '@/types';
 import { db } from './firebase'; 
-import { collection, getDocs, query, orderBy, limit, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, doc, getDoc, setDoc } from 'firebase/firestore';
 
 export async function getTradeHistory(count: number = 20): Promise<Trade[]> {
   if (!db) {
@@ -17,7 +17,6 @@ export async function getTradeHistory(count: number = 20): Promise<Trade[]> {
       return { 
         id: doc.id, 
         ...data,
-        // Ensure timestamps are Date objects if they are Firestore Timestamps
         timestampOpen: data.timestampOpen?.toDate ? data.timestampOpen.toDate() : new Date(data.timestampOpen),
         timestampClose: data.timestampClose?.toDate ? data.timestampClose.toDate() : data.timestampClose ? new Date(data.timestampClose) : undefined,
       } as Trade;
@@ -60,16 +59,68 @@ export async function getBotConfiguration(): Promise<BotConfig> {
     const configRef = doc(db, 'bot_config', 'main'); 
     const docSnap = await getDoc(configRef);
     if (docSnap.exists()) {
-      return docSnap.data() as BotConfig;
+      const data = docSnap.data();
+      // Ensure targetSymbols is always an array, even if stored as a string
+      if (data.targetSymbols && typeof data.targetSymbols === 'string') {
+        data.targetSymbols = data.targetSymbols.split(',').map((s: string) => s.trim()).filter(Boolean);
+      } else if (!Array.isArray(data.targetSymbols)) {
+        data.targetSymbols = [];
+      }
+      return data as BotConfig;
     } else {
-      console.warn("Bot configuration not found in Firestore.");
-      return {}; 
+      console.warn("Bot configuration not found in Firestore. Returning default empty config.");
+      return { targetSymbols: [] }; // Return with empty array for targetSymbols
     }
   } catch (error) {
     console.error("Error fetching bot configuration from Firestore:", error);
-    return Promise.resolve({});
+    return Promise.resolve({ targetSymbols: [] });
   }
 }
+
+export async function updateBotConfiguration(newConfig: Partial<BotConfig>): Promise<{success: boolean; message?: string}> {
+  if (!db) {
+    console.error("Firestore is not initialized. Cannot update bot configuration.");
+    return { success: false, message: "Firestore is not initialized." };
+  }
+  try {
+    const configRef = doc(db, 'bot_config', 'main');
+    // Fetch existing config to merge, or set new if it doesn't exist
+    const currentDoc = await getDoc(configRef);
+    const currentConfig = currentDoc.exists() ? currentDoc.data() : {};
+    
+    const updatedConfig = { ...currentConfig, ...newConfig };
+
+    // Ensure specific fields are numbers if they are provided
+    const numericFields: (keyof BotConfig)[] = ['emaShortPeriod', 'emaMediumPeriod', 'emaLongPeriod', 'atrPeriod', 'stopLossMultiplier', 'takeProfitMultiplier'];
+    for (const field of numericFields) {
+      if (updatedConfig[field] !== undefined && updatedConfig[field] !== null && updatedConfig[field] !== '') {
+        const numValue = parseFloat(String(updatedConfig[field]));
+        if (!isNaN(numValue)) {
+          updatedConfig[field] = numValue;
+        } else {
+          delete updatedConfig[field]; // Remove if it's not a valid number
+        }
+      } else if (updatedConfig[field] === '' || updatedConfig[field] === null) {
+         delete updatedConfig[field]; // Remove if empty or null
+      }
+    }
+    
+    // Ensure targetSymbols is an array of strings
+    if (newConfig.targetSymbols && typeof newConfig.targetSymbols === 'string') {
+      updatedConfig.targetSymbols = newConfig.targetSymbols.split(',').map(s => s.trim()).filter(Boolean);
+    } else if (Array.isArray(newConfig.targetSymbols)) {
+      updatedConfig.targetSymbols = newConfig.targetSymbols.map(s => String(s).trim()).filter(Boolean);
+    }
+
+
+    await setDoc(configRef, updatedConfig, { merge: true });
+    return { success: true, message: "Configuration updated successfully." };
+  } catch (error: any) {
+    console.error("Error updating bot configuration in Firestore:", error);
+    return { success: false, message: `Failed to update configuration: ${error.message}` };
+  }
+}
+
 
 export async function getKeyMetrics(): Promise<{ totalPnl: number; winRate: number; totalTrades: number }> {
   const trades = await getTradeHistory(1000); 
