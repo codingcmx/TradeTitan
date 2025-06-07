@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Wallet, TrendingUp } from 'lucide-react';
+import { Wallet } from 'lucide-react';
 import { getAccountBalance } from '@/ai/flows/account-flow';
 import type { AccountBalanceOutput } from '@/ai/flows/account-flow';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -34,7 +34,7 @@ export function AccountBalanceCard() {
   return (
     <Card className="shadow-lg hover:shadow-primary/20 transition-shadow duration-300 col-span-1 md:col-span-1 lg:col-span-1">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">Account Balance</CardTitle>
+        <CardTitle className="text-sm font-medium text-muted-foreground">Account Balance (Futures)</CardTitle>
         <Wallet className="h-5 w-5 text-muted-foreground" />
       </CardHeader>
       <CardContent>
@@ -42,6 +42,7 @@ export function AccountBalanceCard() {
           <>
             <Skeleton className="h-8 w-3/4 mb-2" />
             <Skeleton className="h-6 w-1/2" />
+            <Skeleton className="h-4 w-full mt-3" /> 
           </>
         ) : error ? (
           <Alert variant="destructive">
@@ -65,9 +66,6 @@ export function AccountBalanceCard() {
         ) : (
           <p className="text-muted-foreground">No balance data available.</p>
         )}
-         <p className="text-xs text-amber-500 italic mt-3">
-              Note: Displaying MOCK DATA. API key integration needed for live balance.
-          </p>
       </CardContent>
     </Card>
   );
