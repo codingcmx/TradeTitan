@@ -3,12 +3,13 @@ import { Header } from '@/components/layout/Header';
 import { RealtimeTradesCard } from '@/components/cards/RealtimeTradesCard';
 import { TradeHistoryCard } from '@/components/cards/TradeHistoryCard';
 import { BotConfigCard } from '@/components/cards/BotConfigCard';
+import { StrategyAssistantCard } from '@/components/cards/StrategyAssistantCard'; // New
 import { BotLogsCard } from '@/components/cards/BotLogsCard';
 import { StatCard } from '@/components/cards/StatCard';
 import { AccountBalanceCard } from '@/components/cards/AccountBalanceCard';
-import { PlaceTradeCard } from '@/components/cards/PlaceTradeCard'; // New import
+import { PlaceTradeCard } from '@/components/cards/PlaceTradeCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, History, Settings, ListChecks, DollarSign, Percent, BarChart2, Send } from 'lucide-react'; // Added Send icon
+import { TrendingUp, History, Settings, ListChecks, DollarSign, Percent, BarChart2, Send, Lightbulb } from 'lucide-react';
 import { getKeyMetrics } from '@/lib/firestoreService'; 
 import type { KeyMetric } from '@/types';
 
@@ -41,11 +42,11 @@ export default async function DashboardPage() {
         </div>
 
         <Tabs defaultValue="live" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 mb-4 bg-card border border-border shadow-sm"> {/* Adjusted to 5 cols */}
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 mb-4 bg-card border border-border shadow-sm">
             <TabsTrigger value="live" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
               <TrendingUp className="mr-2 h-5 w-5" /> Live View
             </TabsTrigger>
-            <TabsTrigger value="actions" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground"> {/* New Actions Tab */}
+            <TabsTrigger value="actions" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
               <Send className="mr-2 h-5 w-5" /> Actions
             </TabsTrigger>
             <TabsTrigger value="history" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
@@ -60,11 +61,11 @@ export default async function DashboardPage() {
           </TabsList>
 
           <TabsContent value="live">
-            <div className="grid gap-4 md:grid-cols-1"> {/* Wrapped RealtimeTradesCard to allow PlaceTradeCard alongside or within */}
+            <div className="grid gap-4 md:grid-cols-1">
                <RealtimeTradesCard />
             </div>
           </TabsContent>
-          <TabsContent value="actions"> {/* New Actions Tab Content */}
+          <TabsContent value="actions">
             <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
                 <PlaceTradeCard />
             </div>
@@ -74,8 +75,15 @@ export default async function DashboardPage() {
             <TradeHistoryCard />
           </TabsContent>
           <TabsContent value="config">
-            {/* @ts-expect-error Server Component */}
-            <BotConfigCard />
+            <div className="grid gap-8 md:grid-cols-1 lg:grid-cols-2">
+              <div>
+                {/* @ts-expect-error Server Component */}
+                <BotConfigCard />
+              </div>
+              <div>
+                <StrategyAssistantCard />
+              </div>
+            </div>
           </TabsContent>
           <TabsContent value="logs">
             {/* @ts-expect-error Server Component */}
@@ -90,3 +98,4 @@ export default async function DashboardPage() {
   );
 }
 
+    
