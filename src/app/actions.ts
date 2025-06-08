@@ -1,21 +1,43 @@
 
 'use server';
 
-import { updateBotConfiguration, getBotConfiguration, updateCustomStrategyDoc, getCustomStrategyDoc } from '@/lib/firestoreService'; // getCustomStrategyDoc
+import { updateBotConfiguration, getBotConfiguration, updateCustomStrategyDoc, getCustomStrategyDoc } from '@/lib/firestoreService';
 import type { BotConfig, CustomStrategyDoc } from '@/types';
 import { revalidatePath } from 'next/cache';
 
-// This type will be used for the new consolidated save action
 interface StrategyAndConfigData {
   pineScript: string;
   explanation: string;
-  configToSave: BotConfig; // Includes all bot parameters and tradingEnabled status
+  configToSave: BotConfig;
 }
 
 export async function saveStrategyAndConfigurationAction(
   data: StrategyAndConfigData
 ): Promise<{ success: boolean; message: string }> {
   try {
+    // Validate essential parameters if trading is being enabled
+    if (data.configToSave.tradingEnabled) {
+      const { targetSymbols, atrPeriod, stopLossMultiplier, takeProfitMultiplier } = data.configToSave;
+      if (!targetSymbols || targetSymbols.length === 0) {
+        // Save config but ensure tradingEnabled is false due to validation failure
+        await updateBotConfiguration({ ...data.configToSave, tradingEnabled: false });
+        return { success: false, message: 'Cannot enable trading: Target Symbols are required. Configuration saved with trading disabled.' };
+      }
+      if (atrPeriod === undefined || atrPeriod === null || isNaN(Number(atrPeriod))) {
+        await updateBotConfiguration({ ...data.configToSave, tradingEnabled: false });
+        return { success: false, message: 'Cannot enable trading: ATR Period is required and must be a number. Configuration saved with trading disabled.' };
+      }
+      if (stopLossMultiplier === undefined || stopLossMultiplier === null || isNaN(Number(stopLossMultiplier))) {
+         await updateBotConfiguration({ ...data.configToSave, tradingEnabled: false });
+        return { success: false, message: 'Cannot enable trading: Stop Loss Multiplier is required and must be a number. Configuration saved with trading disabled.' };
+      }
+      if (takeProfitMultiplier === undefined || takeProfitMultiplier === null || isNaN(Number(takeProfitMultiplier))) {
+        await updateBotConfiguration({ ...data.configToSave, tradingEnabled: false });
+        return { success: false, message: 'Cannot enable trading: Take Profit Multiplier is required and must be a number. Configuration saved with trading disabled.' };
+      }
+      // Add more checks as needed, e.g., for EMA periods if they are fundamental to all strategies your bot runs
+    }
+
     // 1. Save Pine Script and Explanation
     const strategyDoc: CustomStrategyDoc = {
       pineScript: data.pineScript,
@@ -26,15 +48,14 @@ export async function saveStrategyAndConfigurationAction(
       return { success: false, message: strategySaveResult.message || 'Failed to save strategy document.' };
     }
 
-    // 2. Save Bot Configuration (which includes tradingEnabled)
-    // The configToSave object should be directly what Firestore expects for bot_config/main
+    // 2. Save Bot Configuration (which includes tradingEnabled, potentially overridden to false by validation)
     const botConfigSaveResult = await updateBotConfiguration(data.configToSave);
     if (!botConfigSaveResult.success) {
-      // Rollback or log? For now, just report bot config save failure.
       return { success: false, message: botConfigSaveResult.message || 'Strategy document saved, but failed to save bot configuration.' };
     }
     
-    revalidatePath('/'); // Revalidate relevant paths, especially for header bot status
+    revalidatePath('/'); 
+    revalidatePath('/dashboard'); // Assuming dashboard is the main page, adjust if needed
     return { success: true, message: 'Strategy and bot configuration saved successfully!' };
 
   } catch (error: any) {
@@ -44,13 +65,10 @@ export async function saveStrategyAndConfigurationAction(
 }
 
 
-// The old saveBotConfigurationAction might still be useful if we ever need to save only bot config from elsewhere
-// but for now, the new card will use saveStrategyAndConfigurationAction.
-// We can deprecate or remove this if it's no longer directly called by any UI component.
-// For now, keeping it as is but noting it's not used by the new StrategyDevelopmentCard.
+// Deprecated actions below, kept for reference but should be removed if no longer used.
 
 export async function saveBotConfigurationAction(
-  formData: FormData // This is kept for potential direct use, but new card won't use FormData this way
+  formData: FormData 
 ): Promise<{ success: boolean; message: string; updatedConfig?: BotConfig }> {
   try {
     const newConfig: Partial<BotConfig> = {
@@ -89,9 +107,6 @@ export async function saveBotConfigurationAction(
   }
 }
 
-
-// saveCustomStrategyDocAction is effectively replaced by the first part of saveStrategyAndConfigurationAction
-// Keeping it for now in case of direct use, but it's also not directly used by the new card.
 export async function saveCustomStrategyDocAction( 
   formData: FormData
 ): Promise<{ success: boolean; message: string; updatedDoc?: CustomStrategyDoc }> {
@@ -114,3 +129,5 @@ export async function saveCustomStrategyDocAction(
     return { success: false, message: error.message || 'An unexpected error occurred.' };
   }
 }
+
+    

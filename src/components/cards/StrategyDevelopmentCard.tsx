@@ -14,13 +14,13 @@ import { getCustomStrategyDoc, getBotConfiguration } from '@/lib/firestoreServic
 import { validateStrategyConsistency, type StrategyValidationOutput } from '@/ai/flows/strategy-validator-flow';
 import { saveStrategyAndConfigurationAction } from '@/app/actions';
 
-import { Loader2, Save, FileText, Wand2, AlertTriangle, CheckCircle2, Bot as BotIcon, Info } from 'lucide-react';
+import { Loader2, Save, FileText, Wand2, AlertTriangle, CheckCircle2, Bot as BotIcon, Info, Power } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 
 interface StrategyFormData extends CustomStrategyDoc {
   capital: string;
-  targetSymbols: string; 
+  targetSymbols: string;
   emaShortPeriod?: number | string;
   emaMediumPeriod?: number | string;
   emaLongPeriod?: number | string;
@@ -33,7 +33,7 @@ interface StrategyFormData extends CustomStrategyDoc {
 const initialFormState: StrategyFormData = {
   pineScript: '',
   explanation: '',
-  capital: '1000', 
+  capital: '1000',
   targetSymbols: '',
   emaShortPeriod: '',
   emaMediumPeriod: '',
@@ -55,8 +55,8 @@ export function StrategyDevelopmentCard() {
   const [error, setError] = useState<string | null>(null);
   const [validationResult, setValidationResult] = useState<StrategyValidationOutput | null>(null);
   const { toast } = useToast();
-
-
+  
+  // Load initial data from Firestore
   useEffect(() => {
     async function fetchInitialData() {
       setIsLoadingInitialData(true);
@@ -67,18 +67,12 @@ export function StrategyDevelopmentCard() {
           getBotConfiguration()
         ]);
         
-        const initialPine = doc.pineScript || '';
-        const initialExplanation = doc.explanation || '';
-        // Use capital from config if available, then form's current, then default
-        const loadedCapital = config?.capital?.toString() || formData.capital || initialFormState.capital;
-
-
         setFormData(prev => ({
           ...prev,
-          pineScript: initialPine,
-          explanation: initialExplanation,
-          capital: loadedCapital, 
-          targetSymbols: Array.isArray(config.targetSymbols) ? config.targetSymbols.join(', ') : '',
+          pineScript: doc.pineScript || '',
+          explanation: doc.explanation || '',
+          capital: config?.capital?.toString() || prev.capital || initialFormState.capital,
+          targetSymbols: Array.isArray(config.targetSymbols) ? config.targetSymbols.join(', ') : (config.targetSymbols || ''),
           emaShortPeriod: config.emaShortPeriod?.toString() || '',
           emaMediumPeriod: config.emaMediumPeriod?.toString() || '',
           emaLongPeriod: config.emaLongPeriod?.toString() || '',
@@ -104,18 +98,18 @@ export function StrategyDevelopmentCard() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
     const { name, value, type } = e.target;
-    const isCheckbox = type === 'checkbox';
     // @ts-ignore
-    const checked = isCheckbox ? e.target.checked : undefined;
+    const checked = type === 'checkbox' ? e.target.checked : undefined;
 
     setFormData(prev => ({
       ...prev,
-      [name]: isCheckbox ? checked : value,
+      [name]: type === 'checkbox' ? checked : value,
     }));
      
     if (name === 'pineScript' || name === 'explanation') {
         setValidationResult(null); 
     }
+    setError(null); // Clear general error on input change
   };
 
   const handleSwitchChange = (checked: boolean) => {
@@ -123,6 +117,7 @@ export function StrategyDevelopmentCard() {
       ...prev,
       tradingEnabled: checked,
     }));
+    setError(null);
   };
 
   const handleValidate = async () => {
@@ -158,6 +153,16 @@ export function StrategyDevelopmentCard() {
     });
   };
   
+  const checkRequiredFields = () : boolean => {
+    if (!formData.targetSymbols?.trim()) return false;
+    // Assuming ATR-based strategy is the default for this UI
+    if (formData.atrPeriod === '' || isNaN(Number(formData.atrPeriod))) return false;
+    if (formData.stopLossMultiplier === '' || isNaN(Number(formData.stopLossMultiplier))) return false;
+    if (formData.takeProfitMultiplier === '' || isNaN(Number(formData.takeProfitMultiplier))) return false;
+    // EMA fields are optional, depends on strategy
+    return true;
+  };
+
   const handleSaveStrategyAndConfig = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -166,6 +171,14 @@ export function StrategyDevelopmentCard() {
     if (isNaN(parsedCapital) || parsedCapital <= 0) {
         setError("Capital must be a positive number.");
         toast({ title: "Input Error", description: "Capital must be a positive number.", variant: "destructive" });
+        return;
+    }
+    
+    if (formData.tradingEnabled && !checkRequiredFields()) {
+        setError("Cannot enable trading. Please ensure Target Symbols, ATR Period, Stop Loss Multiplier, and Take Profit Multiplier are filled correctly.");
+        toast({ title: "Configuration Incomplete", description: "Required fields are missing to enable trading.", variant: "destructive"});
+        // Optionally set formData.tradingEnabled = false here if you want to force it off
+        // setFormData(prev => ({...prev, tradingEnabled: false }));
         return;
     }
 
@@ -181,13 +194,6 @@ export function StrategyDevelopmentCard() {
       capital: parsedCapital, 
     };
     
-    if ((configToSave.stopLossMultiplier || configToSave.takeProfitMultiplier) && !configToSave.atrPeriod) {
-        setError("ATR Period is required if Stop Loss or Take Profit Multipliers are set (as they are ATR-based).");
-        toast({ title: "Configuration Error", description: "ATR Period is required for ATR-based SL/TP.", variant: "destructive"});
-        return;
-    }
-
-
     startSaveTransition(async () => {
       const result = await saveStrategyAndConfigurationAction({
         pineScript: formData.pineScript || '',
@@ -197,6 +203,20 @@ export function StrategyDevelopmentCard() {
 
       if (result.success) {
         toast({ title: 'Success', description: "Strategy and bot configuration saved! Bot status in header should update shortly." });
+         // Re-fetch config to update "Trading Enabled" state accurately if server modified it due to validation
+        const updatedConfig = await getBotConfiguration();
+        setFormData(prev => ({
+            ...prev,
+            tradingEnabled: updatedConfig.tradingEnabled || false,
+             targetSymbols: Array.isArray(updatedConfig.targetSymbols) ? updatedConfig.targetSymbols.join(', ') : (updatedConfig.targetSymbols || ''),
+            emaShortPeriod: updatedConfig.emaShortPeriod?.toString() || '',
+            emaMediumPeriod: updatedConfig.emaMediumPeriod?.toString() || '',
+            emaLongPeriod: updatedConfig.emaLongPeriod?.toString() || '',
+            atrPeriod: updatedConfig.atrPeriod?.toString() || '',
+            stopLossMultiplier: updatedConfig.stopLossMultiplier?.toString() || '',
+            takeProfitMultiplier: updatedConfig.takeProfitMultiplier?.toString() || '',
+            capital: updatedConfig.capital?.toString() || prev.capital,
+        }));
       } else {
         toast({ title: 'Error Saving', description: result.message || 'An unknown error occurred during save.', variant: 'destructive' });
         setError(result.message || 'Failed to save.');
@@ -219,16 +239,20 @@ export function StrategyDevelopmentCard() {
     );
   }
 
+  const isSaveDisabled = isSaving || isValidating || isLoadingInitialData;
+  const areRequiredFieldsMissingForActivation = formData.tradingEnabled && !checkRequiredFields();
+
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center"><BotIcon className="mr-2 h-6 w-6 text-primary" /> Bot & Strategy Hub</CardTitle>
         <CardDescription>
-          Define your strategy using Pine Script and a natural language explanation. Validate consistency with AI, then configure and activate your backend bot.
+          Define your strategy, validate consistency with AI, then configure and activate your backend bot.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {error && !isSaving && ( 
+        {(error && !isSaving) && ( 
           <Alert variant="destructive" className="mb-6">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Error</AlertTitle>
@@ -238,6 +262,7 @@ export function StrategyDevelopmentCard() {
         
         <form onSubmit={handleSaveStrategyAndConfig} className="space-y-8">
           
+          {/* Section 1: Define Strategy */}
           <section className="space-y-4 p-6 border rounded-lg shadow-sm bg-card">
             <h3 className="text-xl font-semibold flex items-center text-primary"><FileText className="mr-2 h-5 w-5" /> 1. Define Your Strategy</h3>
             <div>
@@ -270,6 +295,7 @@ export function StrategyDevelopmentCard() {
           
           <Separator />
 
+          {/* Section 2: Configure Bot & Activate */}
           <section className="space-y-6 p-6 border rounded-lg shadow-sm bg-card">
             <h3 className="text-xl font-semibold flex items-center text-primary"><BotIcon className="mr-2 h-5 w-5" /> 2. Configure Bot & Activate</h3>
              <Alert variant="default" className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300">
@@ -281,7 +307,7 @@ export function StrategyDevelopmentCard() {
                 </AlertDescription>
             </Alert>
             <div>
-                <Label htmlFor="targetSymbols" className="text-sm font-medium">Target Symbols (comma-separated)</Label>
+                <Label htmlFor="targetSymbols" className="text-sm font-medium">Target Symbols (comma-separated) <span className="text-red-500">*</span></Label>
                 <Input id="targetSymbols" name="targetSymbols" value={formData.targetSymbols} onChange={handleInputChange} placeholder="e.g., BTCUSDT, ETHUSDT" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -290,29 +316,34 @@ export function StrategyDevelopmentCard() {
                 <div><Label htmlFor="emaLongPeriod" className="text-sm font-medium">EMA Long Period</Label><Input id="emaLongPeriod" name="emaLongPeriod" type="number" value={formData.emaLongPeriod || ''} onChange={handleInputChange} placeholder="e.g., 55" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
             </div>
             <div>
-                <Label htmlFor="atrPeriod" className="text-sm font-medium">ATR Period (for SL/TP calculation)</Label>
+                <Label htmlFor="atrPeriod" className="text-sm font-medium">ATR Period (for SL/TP) <span className="text-red-500">*</span></Label>
                 <Input id="atrPeriod" name="atrPeriod" type="number" value={formData.atrPeriod || ''} onChange={handleInputChange} placeholder="e.g., 14" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
                 <p className="text-xs text-muted-foreground mt-1">Required if using ATR-based Stop Loss/Take Profit multipliers.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <Label htmlFor="stopLossMultiplier" className="text-sm font-medium">Stop Loss Multiplier (ATR-based)</Label>
+                    <Label htmlFor="stopLossMultiplier" className="text-sm font-medium">Stop Loss Multiplier (ATR-based) <span className="text-red-500">*</span></Label>
                     <Input id="stopLossMultiplier" name="stopLossMultiplier" type="number" step="0.1" value={formData.stopLossMultiplier || ''} onChange={handleInputChange} placeholder="e.g., 1.5 (for 1.5 * ATR)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
                 </div>
                 <div>
-                    <Label htmlFor="takeProfitMultiplier" className="text-sm font-medium">Take Profit Multiplier (ATR-based)</Label>
+                    <Label htmlFor="takeProfitMultiplier" className="text-sm font-medium">Take Profit Multiplier (ATR-based) <span className="text-red-500">*</span></Label>
                     <Input id="takeProfitMultiplier" name="takeProfitMultiplier" type="number" step="0.1" value={formData.takeProfitMultiplier || ''} onChange={handleInputChange} placeholder="e.g., 3 (for 3 * ATR)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
                 </div>
             </div>
              <p className="text-xs text-muted-foreground -mt-3">These multipliers are applied to the ATR value by your backend bot. Ensure they align with your strategy's risk management.</p>
-             <div>
+             
+             <div className={`p-4 rounded-md ${formData.tradingEnabled && areRequiredFieldsMissingForActivation ? 'border-red-500 border bg-red-500/10' : ''}`}>
                 <Label htmlFor="tradingEnabled" className="flex items-center justify-between text-sm font-medium">
-                <span>Trading Enabled (Activate Bot)</span>
+                <span className="flex items-center"><Power className="mr-2 h-5 w-5"/>Trading Enabled (Activate Bot)</span>
                 <Switch id="tradingEnabled" name="tradingEnabled" checked={formData.tradingEnabled} onCheckedChange={handleSwitchChange} disabled={isSaving} />
                 </Label>
-                 <p className="text-xs text-muted-foreground mt-1">This switch tells your <span className="font-semibold">backend trading bot</span> whether to start or stop its trading activities based on the saved configuration.</p>
+                 <p className="text-xs text-muted-foreground mt-1">
+                   This switch tells your <span className="font-semibold">backend trading bot</span> whether to start or stop its trading activities based on the saved configuration.
+                   {formData.tradingEnabled && areRequiredFieldsMissingForActivation && <span className="text-red-600 dark:text-red-400 font-semibold"> Required fields (*) must be filled to enable trading.</span>}
+                 </p>
             </div>
-            <Button type="submit" disabled={isSaving || isValidating || isLoadingInitialData} className="w-full text-base py-3 h-12">
+
+            <Button type="submit" disabled={isSaveDisabled} className="w-full text-base py-3 h-12">
               {isSaving ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="mr-2 h-5 w-5" />}
               Save Strategy & Bot Configuration
             </Button>
@@ -322,3 +353,5 @@ export function StrategyDevelopmentCard() {
     </Card>
   );
 }
+
+    
