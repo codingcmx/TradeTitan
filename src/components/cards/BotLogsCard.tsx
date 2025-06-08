@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { BotLog } from '@/types';
@@ -42,7 +43,9 @@ export async function BotLogsCard() {
     <Card className="h-full flex flex-col">
       <CardHeader>
         <CardTitle>Bot Activity Logs</CardTitle>
-        <CardDescription>Recent events and messages from the trading bot.</CardDescription>
+        <CardDescription>
+          Recent events from the trading bot. If "Bot Status" in header is "Online", check here for activity confirmation.
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow overflow-hidden">
         {logs.length === 0 ? (
