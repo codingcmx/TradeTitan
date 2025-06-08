@@ -37,6 +37,20 @@ const availableTimeframes = [
 const MAX_CANDLES = 500; 
 const REFRESH_INTERVAL_MS = 1 * 60 * 1000; // Refresh every 1 minute
 
+// Helper function for dynamic price formatting
+const formatPriceDynamically = (price: number): string => {
+  if (typeof price !== 'number' || isNaN(price)) return '-';
+  if (price >= 100) { // e.g., BTC, or ETH > 100
+    return price.toFixed(2);
+  } else if (price >= 1) { // e.g., ADA, LINK, or ETH < 100
+    return price.toFixed(4);
+  } else if (price >= 0.01) { // e.g., DOGE
+    return price.toFixed(6);
+  } else { // Very low priced assets
+    return price.toFixed(8);
+  }
+};
+
 export function TradeExecutionChart() {
   const [selectedSymbol, setSelectedSymbol] = useState<string>('');
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1h');
@@ -122,18 +136,17 @@ export function TradeExecutionChart() {
 
   useEffect(() => {
     loadChartData(true); // Initial load
-  }, [loadChartData]);
+  }, [loadChartData]); // loadChartData is now memoized by useCallback
 
   useEffect(() => {
     if (!selectedSymbol || !selectedTimeframe) return;
 
     const intervalId = setInterval(() => {
-      // console.log('Refreshing chart data...'); // For debugging
       loadChartData(false); // Subsequent loads are not "initial"
     }, REFRESH_INTERVAL_MS);
 
     return () => clearInterval(intervalId); // Cleanup interval on component unmount or when dependencies change
-  }, [selectedSymbol, selectedTimeframe, loadChartData]); // loadChartData is now a dependency
+  }, [selectedSymbol, selectedTimeframe, loadChartData]);
 
   
   const formattedChartData = useMemo(() => {
@@ -151,7 +164,7 @@ export function TradeExecutionChart() {
       return (
         <div className="bg-background/80 backdrop-blur-sm p-3 border border-border rounded-md shadow-lg text-xs">
           <p className="font-semibold text-foreground">{new Date(data.time).toLocaleString()}</p>
-          <p className="text-primary">Close: <span className="font-mono">${data.close.toFixed(2)}</span></p>
+          <p className="text-primary">Close: <span className="font-mono">${formatPriceDynamically(data.close)}</span></p>
         </div>
       );
     }
@@ -269,7 +282,7 @@ export function TradeExecutionChart() {
                 stroke="hsl(var(--muted-foreground))" 
                 tick={{ fontSize: 12 }} 
                 domain={['auto', 'auto']} 
-                tickFormatter={(value) => `$${value.toFixed(Math.max(0, 8 - Math.floor(Math.log10(Math.abs(value)))))}`} 
+                tickFormatter={(value) => `$${formatPriceDynamically(value)}`}
                 />
               <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 1, strokeDasharray: '3 3' }} />
               <Legend wrapperStyle={{ fontSize: '12px' }} />
@@ -285,7 +298,7 @@ export function TradeExecutionChart() {
                     stroke="hsl(var(--background))"
                     ifOverflow="extendDomain"
                  >
-                   <title>{`${trade.type} Entry @ ${trade.entryPrice}`}</title>
+                   <title>{`${trade.type} Entry @ ${formatPriceDynamically(trade.entryPrice)}`}</title>
                  </ReferenceDot>
               ))}
                {tradeHistory.filter(t => t.exitPrice && t.timestampClose).map(trade => (
@@ -298,7 +311,7 @@ export function TradeExecutionChart() {
                     stroke="hsl(var(--background))"
                     ifOverflow="extendDomain"
                  >
-                   <title>{`Exit @ ${trade.exitPrice}`}</title>
+                   <title>{`Exit @ ${formatPriceDynamically(trade.exitPrice!)}`}</title>
                  </ReferenceDot>
               ))}
             </LineChart>
@@ -314,5 +327,3 @@ export function TradeExecutionChart() {
     </Card>
   );
 }
-
-    
