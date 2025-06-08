@@ -13,7 +13,7 @@ import { AlertTriangle, KeyRound, Loader2 } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 
 export default function LoginPage() {
-  const router = useRouter();
+  const router = useRouter(); // Keep router in case of future needs, but not for primary redirect
   const searchParams = useSearchParams();
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(searchParams.get('error'));
@@ -26,11 +26,10 @@ export default function LoginPage() {
       const result = await loginAction(password);
       if (result?.error) {
         setError(result.error);
-      } else {
-        // Successful login will redirect via middleware, or we can force it.
-        // Forcing redirect here to ensure smooth transition if middleware has timing issues.
-        router.push('/');
       }
+      // If loginAction is successful, it now handles the redirect.
+      // If it returns an error object, we display the error.
+      // No explicit client-side router.push('/') needed here if server action redirects.
     });
   };
 

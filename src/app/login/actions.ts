@@ -2,7 +2,7 @@
 'use server';
 
 import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { redirect } from 'next/navigation'; // Import redirect
 
 export async function loginAction(password: string): Promise<{ error?: string } | void> {
   const appPassword = process.env.APP_PASSWORD;
@@ -20,10 +20,8 @@ export async function loginAction(password: string): Promise<{ error?: string } 
       path: '/',
       maxAge: 60 * 60 * 24 * 7, // 1 week
     });
-    // Redirect will be handled by middleware mostly, but can force here if needed.
-    // For now, let middleware handle redirect after cookie is set.
-    // The client-side form submission will also attempt a redirect.
-    return; // Indicate success (no error)
+    redirect('/'); // Perform redirect from server action
+    // The code below will not be reached if redirect is successful.
   } else {
     return { error: 'Invalid password.' };
   }
