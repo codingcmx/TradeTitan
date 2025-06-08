@@ -16,17 +16,35 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { runBacktest, type BacktestInput, type BacktestOutput } from '@/ai/flows/backtest-flow';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle, CheckCircle, Loader2, LineChart, History, TableIcon } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Loader2, LineChart, History, TableIcon, SlidersHorizontal } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+const availableTimeframes = [
+  { value: '1m', label: '1 Minute' }, { value: '3m', label: '3 Minutes' }, { value: '5m', label: '5 Minutes' },
+  { value: '15m', label: '15 Minutes' }, { value: '30m', label: '30 Minutes' }, { value: '1h', label: '1 Hour' },
+  { value: '2h', label: '2 Hours' }, { value: '4h', label: '4 Hours' }, { value: '6h', label: '6 Hours' },
+  { value: '8h', label: '8 Hours' }, { value: '12h', label: '12 Hours' }, { value: '1d', label: '1 Day' },
+  { value: '3d', label: '3 Days' }, { value: '1w', label: '1 Week' },
+];
 
 export function BacktestingCard() {
   const [historicalDataCsv, setHistoricalDataCsv] = useState('');
   const [initialCapital, setInitialCapital] = useState('10000');
-  const [tradeAmountUSD, setTradeAmountUSD] = useState('100'); // Changed from percentage
-  const [targetSymbolOverride, setTargetSymbolOverride] = useState('');
+  const [tradeAmountUSD, setTradeAmountUSD] = useState('100');
+  
+  // States for override parameters
+  const [overrideTargetSymbol, setOverrideTargetSymbol] = useState('');
+  const [overrideTimeframe, setOverrideTimeframe] = useState('');
+  const [overrideEmaShort, setOverrideEmaShort] = useState('');
+  const [overrideEmaMedium, setOverrideEmaMedium] = useState('');
+  const [overrideAtrPeriod, setOverrideAtrPeriod] = useState('');
+  const [overrideStopLossMultiplier, setOverrideStopLossMultiplier] = useState('');
+  const [overrideTakeProfitMultiplier, setOverrideTakeProfitMultiplier] = useState('');
   
   const [backtestResult, setBacktestResult] = useState<BacktestOutput | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -60,9 +78,27 @@ export function BacktestingCard() {
     const input: BacktestInput = {
       historicalDataCsv,
       initialCapital: parsedCapital,
-      tradeAmountUSD: parsedTradeAmountUSD, // Using USD amount
-      targetSymbolOverride: targetSymbolOverride.trim().toUpperCase() || undefined,
+      tradeAmountUSD: parsedTradeAmountUSD,
+      targetSymbolOverride: overrideTargetSymbol.trim().toUpperCase() || undefined,
+      emaShortPeriod: overrideEmaShort ? parseInt(overrideEmaShort, 10) : undefined,
+      emaMediumPeriod: overrideEmaMedium ? parseInt(overrideEmaMedium, 10) : undefined,
+      atrPeriod: overrideAtrPeriod ? parseInt(overrideAtrPeriod, 10) : undefined,
+      stopLossMultiplier: overrideStopLossMultiplier ? parseFloat(overrideStopLossMultiplier) : undefined,
+      takeProfitMultiplier: overrideTakeProfitMultiplier ? parseFloat(overrideTakeProfitMultiplier) : undefined,
+      timeframe: overrideTimeframe || undefined,
     };
+
+    // Validate that if one override param is set, all necessary ones are set
+    const overrideParamsSet = [input.emaShortPeriod, input.emaMediumPeriod, input.atrPeriod, input.stopLossMultiplier, input.takeProfitMultiplier, input.timeframe];
+    const someOverridesSet = overrideParamsSet.some(p => p !== undefined);
+    const allRequiredOverridesSet = input.emaShortPeriod !== undefined && input.emaMediumPeriod !== undefined && input.atrPeriod !== undefined && input.stopLossMultiplier !== undefined && input.takeProfitMultiplier !== undefined && input.timeframe !== undefined;
+
+    if (someOverridesSet && !allRequiredOverridesSet) {
+        setError("If overriding strategy parameters, please fill all: EMA Short, EMA Medium, ATR Period, SL Multiplier, TP Multiplier, and Timeframe.");
+        toast({ title: 'Input Error', description: "Missing some override parameters. Please fill all or none.", variant: 'destructive' });
+        return;
+    }
+
 
     startTransition(async () => {
       try {
@@ -97,9 +133,9 @@ export function BacktestingCard() {
           Strategy Backtester
         </CardTitle>
         <CardDescription>
-          Test your current bot configuration against historical market data.
+          Test a strategy against historical market data. Uses EMA Crossover (Short/Medium) for entry and ATR-based Stop Loss/Take Profit.
           Paste CSV data: `timestamp,open,high,low,close(,volume)`. Timestamp should be in milliseconds.
-          The backtester uses the configuration saved in the "Bot & Strategy Hub".
+          Default parameters are from "Bot & Strategy Hub", or override them below.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -115,7 +151,7 @@ export function BacktestingCard() {
               disabled={isPending}
             />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="initialCapital">Initial Capital ($)</Label>
               <Input id="initialCapital" type="number" value={initialCapital} onChange={(e) => setInitialCapital(e.target.value)} placeholder="e.g., 10000" disabled={isPending} className="mt-1" />
@@ -124,22 +160,75 @@ export function BacktestingCard() {
               <Label htmlFor="tradeAmountUSD">Trade Amount (USD) per Backtest Trade</Label>
               <Input id="tradeAmountUSD" type="number" step="0.01" value={tradeAmountUSD} onChange={(e) => setTradeAmountUSD(e.target.value)} placeholder="e.g., 100" disabled={isPending} className="mt-1" />
             </div>
-            <div>
-              <Label htmlFor="targetSymbolOverride">Target Symbol (Optional)</Label>
-              <Input id="targetSymbolOverride" value={targetSymbolOverride} onChange={(e) => setTargetSymbolOverride(e.target.value.toUpperCase())} placeholder="e.g., BTCUSDT" disabled={isPending} className="mt-1" />
-               <p className="text-xs text-muted-foreground mt-1">Overrides bot config's first symbol for this test.</p>
-            </div>
           </div>
 
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem value="item-1">
+              <AccordionTrigger className="text-sm hover:no-underline">
+                <div className="flex items-center">
+                 <SlidersHorizontal className="mr-2 h-4 w-4"/> Override Strategy Parameters (Optional)
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pt-4 space-y-4">
+                <p className="text-xs text-muted-foreground">If you fill these, they will be used for this backtest run instead of the globally saved bot configuration. All fields in this section must be filled if any one is.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="overrideTargetSymbol">Target Symbol Override</Label>
+                        <Input id="overrideTargetSymbol" value={overrideTargetSymbol} onChange={(e) => setOverrideTargetSymbol(e.target.value.toUpperCase())} placeholder="e.g., BTCUSDT" disabled={isPending} className="mt-1" />
+                        <p className="text-xs text-muted-foreground mt-1">Overrides bot config's symbol AND CSV header symbol for this test.</p>
+                    </div>
+                    <div>
+                        <Label htmlFor="overrideTimeframe">Trading Timeframe Override</Label>
+                        <Select value={overrideTimeframe} onValueChange={setOverrideTimeframe} disabled={isPending}>
+                            <SelectTrigger className="mt-1">
+                                <SelectValue placeholder="Select timeframe..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {availableTimeframes.map(tf => (
+                                    <SelectItem key={tf.value} value={tf.value}>{tf.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="overrideEmaShort">EMA Short Period Override</Label>
+                        <Input id="overrideEmaShort" type="number" value={overrideEmaShort} onChange={(e) => setOverrideEmaShort(e.target.value)} placeholder="e.g., 9" disabled={isPending} className="mt-1" />
+                    </div>
+                    <div>
+                        <Label htmlFor="overrideEmaMedium">EMA Medium Period Override</Label>
+                        <Input id="overrideEmaMedium" type="number" value={overrideEmaMedium} onChange={(e) => setOverrideEmaMedium(e.target.value)} placeholder="e.g., 21" disabled={isPending} className="mt-1" />
+                    </div>
+                </div>
+                <div>
+                    <Label htmlFor="overrideAtrPeriod">ATR Period Override</Label>
+                    <Input id="overrideAtrPeriod" type="number" value={overrideAtrPeriod} onChange={(e) => setOverrideAtrPeriod(e.target.value)} placeholder="e.g., 14" disabled={isPending} className="mt-1" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="overrideStopLossMultiplier">Stop Loss Multiplier Override</Label>
+                        <Input id="overrideStopLossMultiplier" type="number" step="0.1" value={overrideStopLossMultiplier} onChange={(e) => setOverrideStopLossMultiplier(e.target.value)} placeholder="e.g., 1.5" disabled={isPending} className="mt-1" />
+                    </div>
+                    <div>
+                        <Label htmlFor="overrideTakeProfitMultiplier">Take Profit Multiplier Override</Label>
+                        <Input id="overrideTakeProfitMultiplier" type="number" step="0.1" value={overrideTakeProfitMultiplier} onChange={(e) => setOverrideTakeProfitMultiplier(e.target.value)} placeholder="e.g., 3" disabled={isPending} className="mt-1" />
+                    </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+
           {error && (
-            <Alert variant="destructive">
+            <Alert variant="destructive" className="mt-4">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Error</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
-          <Button type="submit" disabled={isPending} className="w-full">
+          <Button type="submit" disabled={isPending} className="w-full mt-6">
             {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LineChart className="mr-2 h-4 w-4" />}
             Run Backtest
           </Button>
@@ -151,26 +240,28 @@ export function BacktestingCard() {
             
             {backtestResult.configUsed && (
                 <details className="text-xs bg-background p-3 rounded-md border">
-                    <summary className="cursor-pointer font-medium">View Configuration Used</summary>
-                    <pre className="mt-2 whitespace-pre-wrap break-all">{JSON.stringify(backtestResult.configUsed, null, 2)}</pre>
+                    <summary className="cursor-pointer font-medium">
+                        {backtestResult.configUsed.type === 'override' ? 'Override Parameters Used for this Backtest:' : 'Global Bot Configuration Used:'}
+                    </summary>
+                    <pre className="mt-2 whitespace-pre-wrap break-all">{JSON.stringify(backtestResult.configUsed.params, null, 2)}</pre>
                 </details>
             )}
 
             <Separator />
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 text-sm">
-              <div><strong>Initial Capital:</strong> ${backtestResult.initialCapital.toLocaleString()}</div>
-              <div><strong>Final Capital:</strong> ${backtestResult.finalCapital.toLocaleString()}</div>
+              <div><strong>Initial Capital:</strong> ${backtestResult.initialCapital.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+              <div><strong>Final Capital:</strong> ${backtestResult.finalCapital.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
               <div className={backtestResult.netProfit >= 0 ? 'text-green-500' : 'text-red-500'}>
-                <strong>Net Profit:</strong> ${backtestResult.netProfit.toLocaleString()} ({backtestResult.netProfitPercentage.toFixed(2)}%)
+                <strong>Net Profit:</strong> ${backtestResult.netProfit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} ({backtestResult.netProfitPercentage.toFixed(2)}%)
               </div>
               <hr className="col-span-full"/>
               <div><strong>Total Trades:</strong> {backtestResult.totalTrades}</div>
               <div><strong>Winning Trades:</strong> {backtestResult.winningTrades}</div>
               <div><strong>Losing Trades:</strong> {backtestResult.losingTrades}</div>
               <div><strong>Win Rate:</strong> {backtestResult.winRate.toFixed(2)}%</div>
-              {backtestResult.averageWinAmount !== undefined && <div><strong>Avg. Win:</strong> ${backtestResult.averageWinAmount.toLocaleString()}</div>}
-              {backtestResult.averageLossAmount !== undefined && <div><strong>Avg. Loss:</strong> ${backtestResult.averageLossAmount.toLocaleString()}</div>}
-              {backtestResult.profitFactor !== undefined && <div><strong>Profit Factor:</strong> {backtestResult.profitFactor.toFixed(2)}</div>}
+              {backtestResult.averageWinAmount !== undefined && <div><strong>Avg. Win:</strong> ${backtestResult.averageWinAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>}
+              {backtestResult.averageLossAmount !== undefined && <div><strong>Avg. Loss:</strong> ${backtestResult.averageLossAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>}
+              {backtestResult.profitFactor !== undefined && <div><strong>Profit Factor:</strong> {isFinite(backtestResult.profitFactor) ? backtestResult.profitFactor.toFixed(2) : 'Infinity'}</div>}
             </div>
 
             {backtestResult.simulatedTrades.length > 0 && (
@@ -191,8 +282,8 @@ export function BacktestingCard() {
                           <TableHead>Qty</TableHead>
                           <TableHead>PnL ($)</TableHead>
                           <TableHead>PnL (%)</TableHead>
-                          <TableHead>Entry Reason</TableHead>
-                          <TableHead>Exit Reason</TableHead>
+                          <TableHead className="max-w-[200px]">Entry Reason</TableHead>
+                          <TableHead  className="max-w-[200px]">Exit Reason</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -206,18 +297,18 @@ export function BacktestingCard() {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-xs">{formatTimestamp(trade.entryTimestamp)}</TableCell>
-                            <TableCell>${trade.entryPrice.toFixed(2)}</TableCell>
+                            <TableCell>${trade.entryPrice.toFixed(4)}</TableCell>
                             <TableCell className="text-xs">{trade.exitTimestamp ? formatTimestamp(trade.exitTimestamp) : '-'}</TableCell>
-                            <TableCell>{trade.exitPrice ? `$${trade.exitPrice.toFixed(2)}` : '-'}</TableCell>
-                            <TableCell>{trade.quantity.toFixed(4)}</TableCell>
+                            <TableCell>{trade.exitPrice ? `$${trade.exitPrice.toFixed(4)}` : '-'}</TableCell>
+                            <TableCell>{trade.quantity.toFixed(6)}</TableCell>
                             <TableCell className={trade.pnl && trade.pnl >= 0 ? 'text-green-500' : 'text-red-500'}>
-                              {trade.pnl !== undefined ? trade.pnl.toFixed(2) : '-'}
+                              {trade.pnl !== undefined ? trade.pnl.toFixed(4) : '-'}
                             </TableCell>
                              <TableCell className={trade.pnlPercentage && trade.pnlPercentage >= 0 ? 'text-green-500' : 'text-red-500'}>
                               {trade.pnlPercentage !== undefined ? `${trade.pnlPercentage.toFixed(2)}%` : '-'}
                             </TableCell>
-                            <TableCell className="text-xs max-w-[150px] truncate">{trade.reasonEntry}</TableCell>
-                            <TableCell className="text-xs max-w-[150px] truncate">{trade.reasonExit}</TableCell>
+                            <TableCell className="text-xs max-w-[200px] truncate" title={trade.reasonEntry}>{trade.reasonEntry}</TableCell>
+                            <TableCell className="text-xs max-w-[200px] truncate" title={trade.reasonExit}>{trade.reasonExit}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

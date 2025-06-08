@@ -70,6 +70,13 @@ export interface BacktestInput {
   initialCapital: number;
   tradeAmountUSD: number; 
   targetSymbolOverride?: string; // Optional: to specify which symbol in CSV if BotConfig has multiple targetSymbols
+  // Optional strategy parameter overrides
+  emaShortPeriod?: number;
+  emaMediumPeriod?: number;
+  atrPeriod?: number;
+  stopLossMultiplier?: number;
+  takeProfitMultiplier?: number;
+  timeframe?: string;
 }
 
 export interface BacktestSimulatedTrade {
@@ -104,7 +111,10 @@ export interface BacktestOutput {
   initialCapital: number;
   finalCapital: number;
   errorMessage?: string;
-  configUsed?: BotConfig; // To show what config was used for the backtest
+  configUsed?: { // Updated to show type of config
+    type: 'global' | 'override';
+    params: BotConfig | Partial<BacktestInput>; // BotConfig for global, subset of BacktestInput for override
+  };
   symbolTested: string;
 }
 
