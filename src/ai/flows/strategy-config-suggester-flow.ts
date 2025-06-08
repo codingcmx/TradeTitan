@@ -43,7 +43,7 @@ export async function suggestBotConfigParameters(input: StrategyConfigSuggesterI
 }
 
 // This system prompt now emphasizes extracting parameters directly from Pine Script first.
-const systemPrompt = `You are an AI Trading Strategy Configuration Assistant.
+const systemPromptText = `You are an AI Trading Strategy Configuration Assistant.
 The user will provide their Pine Script code (if any), a natural language explanation of the strategy, and their available capital.
 Your goal is to extract relevant parameters PRIMARILY from the Pine Script and SECONDARILY from the explanation to suggest values for a predefined set of bot configuration fields.
 
@@ -84,20 +84,24 @@ User's capital: {{{capital}}}
 Respond ONLY with a valid JSON object that conforms to the StrategyConfigSuggesterOutputSchema.
 `;
 
+const suggesterPrompt = ai.definePrompt(
+  {
+    name: 'strategyConfigSuggesterPrompt',
+    input: { schema: StrategyConfigSuggesterInputSchema },
+    output: { schema: StrategyConfigSuggesterOutputSchema },
+    system: systemPromptText,
+    model: 'googleai/gemini-2.0-flash',
+  }
+);
+
 const strategyConfigSuggesterFlow = ai.defineFlow(
   {
     name: 'strategyConfigSuggesterFlow',
     inputSchema: StrategyConfigSuggesterInputSchema,
     outputSchema: StrategyConfigSuggesterOutputSchema,
-    model: 'googleai/gemini-2.0-flash',
   },
   async (input) => {
-    const { output } = await ai.generate({
-        system: systemPrompt,
-        input: input, // Pass the combined input directly
-        output: { schema: StrategyConfigSuggesterOutputSchema },
-        model: 'googleai/gemini-2.0-flash',
-      });
+    const { output } = await suggesterPrompt(input);
 
     if (!output) {
       return {
