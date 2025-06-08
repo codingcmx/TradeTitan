@@ -23,6 +23,8 @@ const SuggestedBotConfigSchema = z.object({
   emaMediumPeriod: z.number().int().positive().optional().describe('Suggested period for a medium-term EMA (e.g., from Pine `input.int(21, "Medium EMA")`).'),
   emaLongPeriod: z.number().int().positive().optional().describe('Suggested period for a long-term EMA (e.g., from Pine `input.int(55, "Long EMA")`).'),
   atrPeriod: z.number().int().positive().optional().describe('Suggested period for ATR (e.g., from Pine `input.int(14, "ATR Period")`).'),
+  stopLossMultiplier: z.number().positive().optional().describe('Suggested ATR multiplier for stop loss if explicitly found in Pine Script (e.g., atr_val * 1.5).'),
+  takeProfitMultiplier: z.number().positive().optional().describe('Suggested ATR multiplier for take profit if explicitly found in Pine Script (e.g., atr_val * 3).'),
 }).describe("Suggested parameters for the bot configuration based on the user's Pine Script and strategy explanation. Only include fields if clearly inferable. Ensure periods are positive integers.");
 export type SuggestedBotConfig = z.infer<typeof SuggestedBotConfigSchema>;
 
@@ -31,7 +33,7 @@ const StrategyConfigSuggesterOutputSchema = z.object({
   suggestions: SuggestedBotConfigSchema,
   aiAssumptions: z.string().optional().describe("Any assumptions the AI made (e.g., 'Assumed standard EMA usage for crossovers', 'Interpreted `input.int(X)` as a parameter')."),
   warnings: z.array(z.string()).optional().describe("Any warnings, parameters the AI couldn't determine, or indicators mentioned but not supported by the current config fields (e.g., 'Could not determine specific take profit levels from the description.', 'RSI mentioned; user needs to implement RSI logic in bot or use a bot supporting it.')."),
-  summary: z.string().describe("A brief summary of the AI's understanding of the strategy and the parameters it suggested. This summary MUST remind the user to carefully review and MANUALLY SET critical risk management parameters like stop-loss and take-profit multipliers, as the AI does not suggest these from Pine Script or general explanations."),
+  summary: z.string().describe("A brief summary of the AI's understanding of the strategy and the parameters it suggested. This summary MUST remind the user to carefully review and MANUALLY SET critical risk management parameters like stop-loss and take-profit multipliers if the AI could not confidently derive them from ATR-based logic in the Pine Script."),
 });
 export type StrategyConfigSuggesterOutput = z.infer<typeof StrategyConfigSuggesterOutputSchema>;
 
@@ -51,26 +53,28 @@ The bot configuration supports the following parameters that you can suggest val
 - emaMediumPeriod: number. Identify a medium-length EMA period from Pine Script similarly.
 - emaLongPeriod: number. Identify the longest EMA period from Pine Script similarly.
 - atrPeriod: number. Examine Pine Script for \`ta.atr()\` calls and their length arguments, especially if linked to \`input.int()\`.
+- stopLossMultiplier: number (positive). Examine Pine Script for \`strategy.exit()\` calls. If the \`loss\` argument is defined using an ATR value multiplied by a number (e.g., \`loss = myAtrValue * 1.5\`, where \`myAtrValue\` is derived from \`ta.atr()\`), suggest \`1.5\` as the \`stopLossMultiplier\`.
+- takeProfitMultiplier: number (positive). Similarly, examine \`strategy.exit()\` calls. If the \`profit\` argument is defined using an ATR value multiplied by a number (e.g., \`profit = myAtrValue * 3.0\`), suggest \`3.0\` as the \`takeProfitMultiplier\`.
 
 Instructions:
 1.  **Prioritize Pine Script for Parameters**:
-    *   If Pine Script is provided, meticulously parse it for \`input.int()\`, \`input.symbol()\`, explicit numerical values in \`ta.ema(..., length_value)\` or \`ta.atr(length_value)\`, and symbol references. These are your primary source.
+    *   If Pine Script is provided, meticulously parse it for \`input.int()\`, \`input.float()\`, \`input.symbol()\`, explicit numerical values in \`ta.ema(..., length_value)\` or \`ta.atr(length_value)\`, symbol references, and \`strategy.exit()\` calls using ATR for \`loss\` or \`profit\`. These are your primary source.
     *   Map distinct EMA periods found (up to three) to short, medium, and long based on their numerical values (smallest is short, largest is long).
 2.  **Use Explanation for Clarification**: If Pine Script is missing, ambiguous, or uses variables without clear \`input\` definitions, use the natural language explanation to help infer parameter values. If both are provided, Pine Script takes precedence for parameter values.
 3.  **Handle Unclear or Unsupported Parameters**:
     *   If an EMA or ATR period is mentioned generically (e.g., "a fast EMA") without a number in Pine Script or explanation, do NOT suggest a value for it. State this in 'warnings'.
-    *   The AI should NOT suggest values for stop-loss multipliers or take-profit multipliers. These are risk management decisions the user must make.
+    *   **Stop-Loss/Take-Profit:** If \`strategy.exit()\` uses fixed price offsets, fixed pips, or complex conditions NOT directly multiplying an ATR value, DO NOT suggest \`stopLossMultiplier\` or \`takeProfitMultiplier\`. Instead, add a warning like: "Pine Script stop-loss/take-profit logic is not directly based on ATR multipliers. Please manually set the 'Stop Loss Multiplier' and 'Take Profit Multiplier' fields in the bot configuration to align with your strategy's risk management approach."
     *   If other indicators (RSI, MACD, etc.) are found in Pine Script or mentioned in the explanation, acknowledge them in 'summary' and add to 'warnings' that the current bot config fields don't directly support them (meaning, the user would need a bot that can interpret those signals or implement custom logic).
 4.  **Output**:
     *   Strictly adhere to 'StrategyConfigSuggesterOutputSchema'.
-    *   Populate 'suggestions' only with parameters you confidently extracted (primarily from Pine Script if available). All periods MUST be positive integers.
+    *   Populate 'suggestions' only with parameters you confidently extracted (primarily from Pine Script if available). All periods and multipliers MUST be positive numbers.
     *   Use 'aiAssumptions' for any logical leaps (e.g., "Assumed 'EMA1' in comments refers to the 9-period EMA defined in inputs").
     *   The 'summary' MUST:
         *   State what parameters were extracted (and from where, e.g., "Extracted EMA period of 9 from Pine Script input.").
         *   Remind the user to review all AI suggestions carefully.
-        *   Emphasize that they MUST MANUALLY SET crucial risk management parameters like stop-loss multipliers and take-profit multipliers in the bot configuration section of the Strategy Hub.
+        *   Emphasize that if stop-loss/take-profit multipliers were NOT suggested, or if their Pine Script uses a different exit logic, they MUST MANUALLY SET these crucial risk management parameters in the bot configuration section.
         *   Mention that the provided capital (\`\${{{capital}}}\`) is for their context, and they need to manage trade size/position sizing themselves within their bot's logic or exchange settings.
-        *   Explicitly state that YOU ARE NOT SUGGESTING stop-loss or take-profit multipliers.
+        *   Explicitly state that if ATR-based multipliers were not found in the Pine Script, YOU ARE NOT SUGGESTING them.
 
 User's combined strategy input (Pine Script and Explanation):
 {{{strategyDescription}}}
@@ -85,12 +89,12 @@ const strategyConfigSuggesterFlow = ai.defineFlow(
     name: 'strategyConfigSuggesterFlow',
     inputSchema: StrategyConfigSuggesterInputSchema,
     outputSchema: StrategyConfigSuggesterOutputSchema,
-    model: 'googleai/gemini-2.0-flash', 
+    model: 'googleai/gemini-2.0-flash',
   },
   async (input) => {
     const { output } = await ai.generate({
-        system: systemPrompt, 
-        input: input, 
+        system: systemPrompt,
+        input: input, // Pass the combined input directly
         output: { schema: StrategyConfigSuggesterOutputSchema },
         model: 'googleai/gemini-2.0-flash',
       });
@@ -105,3 +109,4 @@ const strategyConfigSuggesterFlow = ai.defineFlow(
     return output;
   }
 );
+
