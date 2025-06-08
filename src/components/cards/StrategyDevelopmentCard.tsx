@@ -69,6 +69,7 @@ export function StrategyDevelopmentCard() {
         
         const initialPine = doc.pineScript || '';
         const initialExplanation = doc.explanation || '';
+        // Use capital from config if available, then form's current, then default
         const loadedCapital = config?.capital?.toString() || formData.capital || initialFormState.capital;
 
 
@@ -195,7 +196,7 @@ export function StrategyDevelopmentCard() {
       });
 
       if (result.success) {
-        toast({ title: 'Success', description: result.message });
+        toast({ title: 'Success', description: "Strategy and bot configuration saved! Bot status in header should update shortly." });
       } else {
         toast({ title: 'Error Saving', description: result.message || 'An unknown error occurred during save.', variant: 'destructive' });
         setError(result.message || 'Failed to save.');
@@ -227,7 +228,7 @@ export function StrategyDevelopmentCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {error && !isSaving && ( // Only show general error if not related to a save attempt
+        {error && !isSaving && ( 
           <Alert variant="destructive" className="mb-6">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Error</AlertTitle>
@@ -236,7 +237,7 @@ export function StrategyDevelopmentCard() {
         )}
         
         <form onSubmit={handleSaveStrategyAndConfig} className="space-y-8">
-          {/* Section 1: Strategy Input & Validation */}
+          
           <section className="space-y-4 p-6 border rounded-lg shadow-sm bg-card">
             <h3 className="text-xl font-semibold flex items-center text-primary"><FileText className="mr-2 h-5 w-5" /> 1. Define Your Strategy</h3>
             <div>
@@ -269,7 +270,6 @@ export function StrategyDevelopmentCard() {
           
           <Separator />
 
-          {/* Section 2: Bot Configuration & Activation */}
           <section className="space-y-6 p-6 border rounded-lg shadow-sm bg-card">
             <h3 className="text-xl font-semibold flex items-center text-primary"><BotIcon className="mr-2 h-5 w-5" /> 2. Configure Bot & Activate</h3>
              <Alert variant="default" className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300">
