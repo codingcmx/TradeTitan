@@ -79,11 +79,18 @@ export function StrategyAssistantCard() {
       try {
         const result = await getStrategySuggestions(parsedInput);
         if (!result.isValidInput && result.explanation) {
-            setError(result.explanation);
-            toast({ title: "Suggestion Error", description: result.explanation, variant: "destructive" });
+            setError(result.explanation); // Display AI's validation message
+            toast({ title: "Input Validation Error by AI", description: result.explanation, variant: "destructive" });
+            setSuggestions(null); // Clear previous suggestions if any
+        } else if (!result.isValidInput) {
+            // Fallback if AI marks invalid but provides no explanation (should not happen with current prompt)
+            setError("The AI determined the inputs were invalid but provided no specific reason. Please check your values.");
+            toast({ title: "Input Validation Error by AI", description: "Please check your values.", variant: "destructive"});
             setSuggestions(null);
-        } else {
-            setSuggestions(result);
+        }
+         else {
+            setSuggestions(result); // Set valid suggestions
+            toast({ title: "AI Analysis Complete", description: "Review the AI's explanation below."});
         }
       } catch (err: any) {
         console.error("Error getting strategy suggestions:", err);
@@ -96,13 +103,15 @@ export function StrategyAssistantCard() {
   };
 
   return (
-    <Card className="shadow-lg">
+    <Card className="shadow-lg hover:shadow-primary/20 transition-shadow duration-300">
       <CardHeader>
         <CardTitle className="flex items-center">
           <Lightbulb className="mr-2 h-6 w-6 text-primary" />
-          AI Strategy Assistant
+          AI Trade Value Assistant
         </CardTitle>
-        <CardDescription>Get AI-powered suggestions to help define your trading strategy parameters.</CardDescription>
+        <CardDescription>
+          Input your capital, trade size, and target take profit/stop loss values. The AI will explain implications like percentage change on margin and conceptual leverage. This tool is for analysis and does not configure the bot.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -128,7 +137,7 @@ export function StrategyAssistantCard() {
                <p className="text-xs text-muted-foreground mt-1">If margin is $50, this is the SL value, e.g., $45.</p>
             </div>
           </div>
-          {error && (
+          {error && !isPending && ( // Only show error if not pending and error exists
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Error</AlertTitle>
@@ -137,13 +146,13 @@ export function StrategyAssistantCard() {
           )}
           <Button type="submit" disabled={isPending} className="w-full">
             {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lightbulb className="mr-2 h-4 w-4" />}
-            Get AI Suggestions
+            Get AI Analysis
           </Button>
         </form>
 
         {suggestions && suggestions.isValidInput && (
           <div className="mt-6 space-y-4 p-4 border rounded-md bg-muted/30">
-            <h3 className="text-lg font-semibold text-primary">AI Suggestions:</h3>
+            <h3 className="text-lg font-semibold text-primary">AI Analysis:</h3>
             <Separator />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
               <p><strong>Target Profit per Trade:</strong> ${suggestions.profitAmount.toFixed(2)}</p>
@@ -159,16 +168,15 @@ export function StrategyAssistantCard() {
             </div>
           </div>
         )}
-         {suggestions && !suggestions.isValidInput && suggestions.explanation && (
+         {/* This section is redundant if error state handles AI's isValidInput=false message */}
+         {/* suggestions && !suggestions.isValidInput && suggestions.explanation && (
             <Alert variant="destructive" className="mt-6">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>AI Suggestion Error</AlertTitle>
               <AlertDescription>{suggestions.explanation}</AlertDescription>
             </Alert>
-         )}
+         ) */}
       </CardContent>
     </Card>
   );
 }
-
-    

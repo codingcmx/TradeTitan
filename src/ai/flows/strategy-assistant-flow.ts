@@ -59,8 +59,8 @@ Your task is to reply directly to the user, explaining the implications of their
     *   State the **Risk/Reward Ratio** (e.g., "This gives you a risk/reward ratio of [Risk/Reward Ratio].").
     *   Explain the **Take Profit Percentage on Margin**. Use the user's provided 'takeProfitValue' and 'tradeSize' from their message, and your calculated 'takeProfitPercentageOnMargin' from the output JSON. For example: "Your take profit target of $[user's provided takeProfitValue] on a $[user's provided tradeSize] margin means you're aiming for a [takeProfitPercentageOnMargin]% gain on your margin for this trade."
     *   Explain the **Stop Loss Percentage on Margin** similarly, using the user's 'stopLossValue', 'tradeSize', and your calculated 'stopLossPercentageOnMargin'. For example: "Your stop loss target of $[user's provided stopLossValue] on a $[user's provided tradeSize] margin means you'd accept a [stopLossPercentageOnMargin]% loss on your margin for this trade."
-    *   **Explain Conceptual Leverage**: Describe how these margin percentages relate to underlying asset price movements and leverage. For example: "To achieve a [takeProfitPercentageOnMargin]% profit on your margin, if the underlying asset's price moves 1% in your favor (without considering fees), you'd conceptually need about {[takeProfitPercentageOnMargin] / 1}x leverage. If the price moves 2% in your favor, you'd need about {[takeProfitPercentageOnMargin] / 2}x leverage." Provide a similar example for the stop loss percentage. Emphasize this is conceptual and actual outcomes depend on the leverage set on their Binance account for the specific symbol.
-    *   **Guidance for Action**: Briefly explain that these calculated percentages (TP: [takeProfitPercentageOnMargin]%, SL: [stopLossPercentageOnMargin]%) are key figures they can use. For example: "You can use these percentages (TP: [takeProfitPercentageOnMargin]%, SL: [stopLossPercentageOnMargin]%) when setting up your trading bot if it supports percentage-based targets, or to inform your manual trading decisions."
+    *   **Explain Conceptual Leverage**: Describe how these margin percentages relate to underlying asset price movements and leverage. For example: "To achieve a [takeProfitPercentageOnMargin]% profit on your margin, if the underlying asset's price moves 1% in your favor (without considering fees), you'd conceptually need about {[takeProfitPercentageOnMargin] / 1}x leverage. If the price moves 2% in your favor, you'd need about {[takeProfitPercentageOnMargin] / 2}x leverage." Provide a similar example for the stop loss percentage. Emphasize this is conceptual and actual outcomes depend on the leverage set on their Binance account for the specific symbol and the actual leverage used for the trade.
+    *   **Guidance for Action**: Briefly explain that these calculated percentages (TP: [takeProfitPercentageOnMargin]%, SL: [stopLossPercentageOnMargin]%) are key figures. For example: "You can use these percentages (TP: [takeProfitPercentageOnMargin]%, SL: [stopLossPercentageOnMargin]%) when setting up your trading bot if it supports percentage-based targets (like ATR multipliers that correspond to these percentages), or to inform your manual trading decisions. These specific dollar values are for your scenario planning."
     *   Maintain a helpful and clear tone.
 
 4.  **Output Format**:
@@ -97,7 +97,7 @@ const strategyAssistantFlow = ai.defineFlow(
     }
 
     // Construct the prompt for the LLM, including the user's input for context
-    const userContextPrompt = `Okay, I have $${input.capital} capital. I want to place trades of $${input.tradeSize} each. I want to take profit when my $${input.tradeSize} margin becomes $${input.takeProfitValue}, and set a stop loss if it drops to $${input.stopLossValue}. What should I know?`;
+    const userContextPrompt = `Okay, I have $${input.capital} capital. I want to place trades with $${input.tradeSize} margin each. I want to take profit when my $${input.tradeSize} margin becomes $${input.takeProfitValue}, and set a stop loss if it drops to $${input.stopLossValue}. What does this mean in terms of percentages and leverage?`;
 
     const { output } = await ai.generate({
         prompt: userContextPrompt, // This provides the user's specific scenario to the LLM
@@ -132,8 +132,8 @@ const strategyAssistantFlow = ai.defineFlow(
         };
     }
     
-    // If LLM says valid, but somehow missed calculations (fallback, should ideally not happen)
-    // This is more of a safeguard; the LLM should be doing this based on the system prompt.
+    // Fallback calculations if LLM somehow misses them but marks input as valid.
+    // This ensures the numeric fields in the output are always populated if isValidInput is true.
     const profitAmount = input.takeProfitValue - input.tradeSize;
     const lossAmount = input.tradeSize - input.stopLossValue;
     const tpPercentage = (profitAmount / input.tradeSize) * 100;
@@ -141,7 +141,7 @@ const strategyAssistantFlow = ai.defineFlow(
     let rrRatio = "N/A";
     if (lossAmount > 0) {
         const ratio = profitAmount / lossAmount;
-        // Simplify ratio, e.g., 2:1, 1:1.5. For simplicity, just present the number.
+        // Simplify ratio for display, e.g., "Profit : Loss" -> "X : 1"
         rrRatio = `${ratio.toFixed(1)}:1`; 
     } else if (profitAmount > 0 && lossAmount === 0) {
         rrRatio = "Infinite (SL at entry)";
@@ -154,7 +154,7 @@ const strategyAssistantFlow = ai.defineFlow(
         riskRewardRatio: output.riskRewardRatio || rrRatio,
         takeProfitPercentageOnMargin: output.takeProfitPercentageOnMargin !== undefined ? output.takeProfitPercentageOnMargin : tpPercentage,
         stopLossPercentageOnMargin: output.stopLossPercentageOnMargin !== undefined ? output.stopLossPercentageOnMargin : slPercentage,
-        explanation: output.explanation || "No explanation provided by AI.", 
+        explanation: output.explanation || "The AI did not provide a detailed explanation, but the calculations are as follows.", 
         isValidInput: output.isValidInput !== undefined ? output.isValidInput : true, 
     };
   }
