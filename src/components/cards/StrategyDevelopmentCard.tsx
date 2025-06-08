@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useState, useTransition, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -34,7 +34,7 @@ interface StrategyFormData extends CustomStrategyDoc {
 const initialFormState: StrategyFormData = {
   pineScript: '',
   explanation: '',
-  capital: '1000', // Default capital for AI context
+  capital: '1000', 
   targetSymbols: '',
   emaShortPeriod: '',
   emaMediumPeriod: '',
@@ -45,18 +45,88 @@ const initialFormState: StrategyFormData = {
   tradingEnabled: false,
 };
 
+// Simple debounce function
+function debounce<T extends (...args: any[]) => void>(func: T, delay: number) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => {
+      func(...args);
+    }, delay);
+  };
+}
+
+
 export function StrategyDevelopmentCard() {
   const [formData, setFormData] = useState<StrategyFormData>(initialFormState);
   const [isLoadingInitialData, setIsLoadingInitialData] = useState(true);
   
   const [isSaving, startSaveTransition] = useTransition();
   const [isValidating, startValidationTransition] = useTransition();
-  const [isSuggesting, startSuggestionTransition] = useTransition();
+  const [isSuggestingParameters, setIsSuggestingParameters] = useState(false);
   
   const [error, setError] = useState<string | null>(null);
   const [validationResult, setValidationResult] = useState<StrategyValidationOutput | null>(null);
   const [suggestionResult, setSuggestionResult] = useState<StrategyConfigSuggesterOutput | null>(null);
   const { toast } = useToast();
+
+  const triggerAiSuggestions = useCallback(async (script: string, expl: string, cap: string) => {
+    if ((!script?.trim() && !expl?.trim())) {
+      // Clear suggestions if both script and explanation are empty
+      setSuggestionResult(null); 
+      // Optionally clear related form fields if desired, or let them persist from previous successful suggestion
+      // For now, let's not clear them to preserve user edits or previous AI fills.
+      return;
+    }
+
+    const parsedCapital = parseFloat(cap);
+    if (isNaN(parsedCapital) || parsedCapital <= 0) {
+      // Don't trigger if capital is invalid, but don't show an error toast here,
+      // as it would be annoying during typing. Validation for save will catch it.
+      return;
+    }
+
+    setIsSuggestingParameters(true);
+    setError(null); // Clear general errors before new suggestion
+
+    const input: StrategyConfigSuggesterInput = {
+        strategyDescription: `PINE SCRIPT:\n\`\`\`pinescript\n${script || 'No Pine Script provided.'}\n\`\`\`\n\nEXPLANATION:\n${expl || 'No explanation provided.'}`,
+        capital: parsedCapital,
+    };
+    try {
+        const result = await suggestBotConfigParameters(input);
+        setSuggestionResult(result);
+        
+        setFormData(prev => ({
+            ...prev,
+            targetSymbols: result.suggestions.targetSymbols?.join(', ') || prev.targetSymbols,
+            emaShortPeriod: result.suggestions.emaShortPeriod?.toString() ?? prev.emaShortPeriod,
+            emaMediumPeriod: result.suggestions.emaMediumPeriod?.toString() ?? prev.emaMediumPeriod,
+            emaLongPeriod: result.suggestions.emaLongPeriod?.toString() ?? prev.emaLongPeriod,
+            atrPeriod: result.suggestions.atrPeriod?.toString() ?? prev.atrPeriod,
+            stopLossMultiplier: result.suggestions.stopLossMultiplier?.toString() ?? prev.stopLossMultiplier,
+            takeProfitMultiplier: result.suggestions.takeProfitMultiplier?.toString() ?? prev.takeProfitMultiplier,
+        }));
+
+        // No toast here to avoid being too chatty on auto-suggestions
+    } catch (err: any) {
+        console.error("Error suggesting parameters:", err);
+        const msg = err.message || "Failed to get parameter suggestions from AI.";
+        // Display suggestion error more subtly, perhaps in the suggestionResult area
+        setSuggestionResult({
+            suggestions: {},
+            summary: "Error fetching AI suggestions.",
+            warnings: [msg]
+        });
+    } finally {
+        setIsSuggestingParameters(false);
+    }
+  }, []); // No dependencies needed for useCallback if it doesn't rely on external scope changing frequently
+
+  const debouncedTriggerAiSuggestions = useCallback(debounce(triggerAiSuggestions, 1500), [triggerAiSuggestions]);
+
 
   useEffect(() => {
     async function fetchInitialData() {
@@ -68,12 +138,15 @@ export function StrategyDevelopmentCard() {
           getBotConfiguration()
         ]);
         
+        const initialPine = doc.pineScript || '';
+        const initialExplanation = doc.explanation || '';
+        const initialCapital = formData.capital || initialFormState.capital; // Keep current form capital if user typed before load
+
         setFormData(prev => ({
-          ...prev, // Keep potentially unsaved Pine/explanation/capital
-          pineScript: doc.pineScript || prev.pineScript || '',
-          explanation: doc.explanation || prev.explanation || '',
-          // Capital is user-managed in the form, persist its state or use default
-          capital: prev.capital || initialFormState.capital, 
+          ...prev,
+          pineScript: initialPine,
+          explanation: initialExplanation,
+          capital: initialCapital, 
           targetSymbols: Array.isArray(config.targetSymbols) ? config.targetSymbols.join(', ') : '',
           emaShortPeriod: config.emaShortPeriod?.toString() || '',
           emaMediumPeriod: config.emaMediumPeriod?.toString() || '',
@@ -83,6 +156,10 @@ export function StrategyDevelopmentCard() {
           takeProfitMultiplier: config.takeProfitMultiplier?.toString() || '',
           tradingEnabled: config.tradingEnabled || false,
         }));
+
+        if (initialPine.trim() || initialExplanation.trim()) {
+          triggerAiSuggestions(initialPine, initialExplanation, initialCapital);
+        }
 
       } catch (err: any) {
         console.error("Error fetching initial strategy data:", err);
@@ -94,7 +171,37 @@ export function StrategyDevelopmentCard() {
       }
     }
     fetchInitialData();
-  }, []); 
+  }, []);  // triggerAiSuggestions is stable due to useCallback
+
+  
+  useEffect(() => {
+    // Don't trigger on initial data population if already handled by fetchInitialData's call
+    if (!isLoadingInitialData && (formData.pineScript !== initialFormState.pineScript || formData.explanation !== initialFormState.explanation || formData.capital !== initialFormState.capital)) {
+        if (formData.pineScript?.trim() || formData.explanation?.trim()) {
+             debouncedTriggerAiSuggestions(formData.pineScript || '', formData.explanation || '', formData.capital);
+        } else {
+            // If both are cleared, clear suggestions and potentially auto-filled fields
+            setSuggestionResult(null);
+             setFormData(prev => ({
+                ...prev,
+                targetSymbols: getBotConfigurationResult?.targetSymbols?.join(', ') || '', // Revert to loaded config or empty
+                emaShortPeriod: getBotConfigurationResult?.emaShortPeriod?.toString() || '',
+                emaMediumPeriod: getBotConfigurationResult?.emaMediumPeriod?.toString() || '',
+                emaLongPeriod: getBotConfigurationResult?.emaLongPeriod?.toString() || '',
+                atrPeriod: getBotConfigurationResult?.atrPeriod?.toString() || '',
+                stopLossMultiplier: getBotConfigurationResult?.stopLossMultiplier?.toString() || '',
+                takeProfitMultiplier: getBotConfigurationResult?.takeProfitMultiplier?.toString() || '',
+            }));
+        }
+    }
+  }, [formData.pineScript, formData.explanation, formData.capital, isLoadingInitialData, debouncedTriggerAiSuggestions]);
+  
+  // Store initial bot config to revert if script/explanation is cleared
+  const [getBotConfigurationResult, setGetBotConfigurationResult] = useState<BotConfig | null>(null);
+   useEffect(() => {
+    getBotConfiguration().then(config => setGetBotConfigurationResult(config));
+  }, []);
+
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
     const { name, value, type } = e.target;
@@ -106,12 +213,9 @@ export function StrategyDevelopmentCard() {
       ...prev,
       [name]: isCheckbox ? checked : value,
     }));
-     // Clear AI results if inputs that fed the AI change
-    if (name === 'pineScript' || name === 'explanation' || name === 'capital') {
-        setSuggestionResult(null);
-        if (name === 'pineScript' || name === 'explanation') {
-            setValidationResult(null);
-        }
+     
+    if (name === 'pineScript' || name === 'explanation') {
+        setValidationResult(null); // Clear validation if script/explanation changes
     }
   };
 
@@ -154,65 +258,17 @@ export function StrategyDevelopmentCard() {
       }
     });
   };
-
-  const handleSuggestParameters = async () => {
-    setError(null);
-    setSuggestionResult(null);
-     if (!formData.pineScript?.trim() && !formData.explanation?.trim()) {
-      setError("Please provide Pine Script and/or an explanation to get suggestions.");
-      toast({
-        title: 'Input Missing',
-        description: "Pine Script or explanation is required for AI suggestions.",
-        variant: 'destructive',
-      });
-      return;
-    }
-    const parsedCapital = parseFloat(formData.capital);
-    if (isNaN(parsedCapital) || parsedCapital <= 0) {
-        setError("Please enter a valid positive number for capital (used for AI context).");
-        toast({ title: "Input Error", description: "Capital must be a positive number for AI context.", variant: "destructive" });
-        return;
-    }
-
-    startSuggestionTransition(async () => {
-        const input: StrategyConfigSuggesterInput = {
-            // Send both, AI is prompted to prioritize Pine Script
-            strategyDescription: `PINE SCRIPT:\n\`\`\`pinescript\n${formData.pineScript || 'No Pine Script provided.'}\n\`\`\`\n\nEXPLANATION:\n${formData.explanation || 'No explanation provided.'}`,
-            capital: parsedCapital,
-        };
-        try {
-            const result = await suggestBotConfigParameters(input);
-            setSuggestionResult(result);
-            
-            // Auto-fill form fields with suggestions
-            setFormData(prev => ({
-                ...prev,
-                targetSymbols: result.suggestions.targetSymbols?.join(', ') || prev.targetSymbols,
-                emaShortPeriod: result.suggestions.emaShortPeriod?.toString() ?? prev.emaShortPeriod,
-                emaMediumPeriod: result.suggestions.emaMediumPeriod?.toString() ?? prev.emaMediumPeriod,
-                emaLongPeriod: result.suggestions.emaLongPeriod?.toString() ?? prev.emaLongPeriod,
-                atrPeriod: result.suggestions.atrPeriod?.toString() ?? prev.atrPeriod,
-                stopLossMultiplier: result.suggestions.stopLossMultiplier?.toString() ?? prev.stopLossMultiplier,
-                takeProfitMultiplier: result.suggestions.takeProfitMultiplier?.toString() ?? prev.takeProfitMultiplier,
-            }));
-
-            if (result.warnings && result.warnings.length > 0) {
-                toast({ title: "AI Suggestions (with warnings)", description: "Review suggestions and warnings below. Some parameters might need manual input."});
-            } else {
-                toast({ title: "AI Suggestions Received", description: "Review and adjust the auto-filled parameters below."});
-            }
-        } catch (err: any) {
-            console.error("Error suggesting parameters:", err);
-            const msg = err.message || "Failed to get parameter suggestions from AI.";
-            setError(msg);
-            toast({ title: 'Parameter Suggestion AI Error', description: msg, variant: 'destructive' });
-        }
-    });
-  };
   
   const handleSaveStrategyAndConfig = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+
+    const parsedCapital = parseFloat(formData.capital);
+    if (isNaN(parsedCapital) || parsedCapital <= 0) {
+        setError("Capital must be a positive number.");
+        toast({ title: "Input Error", description: "Capital must be a positive number.", variant: "destructive" });
+        return;
+    }
 
     const configToSave: BotConfig = {
       targetSymbols: formData.targetSymbols.split(',').map(s => s.trim()).filter(Boolean),
@@ -235,7 +291,6 @@ export function StrategyDevelopmentCard() {
         toast({ title: "Configuration Error", description: "Both SL and TP multipliers are needed with ATR Period.", variant: "destructive"});
         return;
     }
-
 
     startSaveTransition(async () => {
       const result = await saveStrategyAndConfigurationAction({
@@ -273,7 +328,7 @@ export function StrategyDevelopmentCard() {
       <CardHeader>
         <CardTitle className="flex items-center"><BotIcon className="mr-2 h-6 w-6 text-primary" /> Bot & Strategy Hub</CardTitle>
         <CardDescription>
-          Input your Pine Script and explanation. Use AI to validate consistency and suggest parameters, then configure and activate your bot.
+          Input your Pine Script and explanation. AI will automatically suggest parameters. Review, adjust, and then configure & activate your bot.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -291,16 +346,26 @@ export function StrategyDevelopmentCard() {
             <h3 className="text-xl font-semibold flex items-center text-primary"><FileText className="mr-2 h-5 w-5" /> 1. Define Your Strategy</h3>
             <div>
               <Label htmlFor="pineScript" className="text-sm font-medium">Pine Script</Label>
-              <Textarea id="pineScript" name="pineScript" value={formData.pineScript} onChange={handleInputChange} placeholder="Paste your Pine Script code here..." className="mt-1 h-52 font-mono text-xs bg-muted/30 focus:bg-background" disabled={isSaving || isValidating || isSuggesting} />
+              <Textarea id="pineScript" name="pineScript" value={formData.pineScript} onChange={handleInputChange} placeholder="Paste your Pine Script code here... AI will analyze as you type/paste." className="mt-1 h-52 font-mono text-xs bg-muted/30 focus:bg-background" disabled={isSaving || isValidating} />
             </div>
             <div>
               <Label htmlFor="explanation" className="text-sm font-medium">Strategy Explanation (Natural Language)</Label>
-              <Textarea id="explanation" name="explanation" value={formData.explanation} onChange={handleInputChange} placeholder="Explain how your strategy works, its entry/exit conditions, risk management, etc." className="mt-1 h-32 bg-muted/30 focus:bg-background" disabled={isSaving || isValidating || isSuggesting} />
+              <Textarea id="explanation" name="explanation" value={formData.explanation} onChange={handleInputChange} placeholder="Explain how your strategy works... AI will analyze as you type/paste." className="mt-1 h-32 bg-muted/30 focus:bg-background" disabled={isSaving || isValidating} />
             </div>
-            <Button type="button" onClick={handleValidate} variant="outline" disabled={isValidating || isSaving || isSuggesting || !formData.pineScript?.trim() || !formData.explanation?.trim()} className="w-full sm:w-auto">
+             <div>
+                <Label htmlFor="capital" className="text-sm font-medium">Your Trading Capital (for AI context)</Label>
+                <Input id="capital" name="capital" type="number" value={formData.capital} onChange={handleInputChange} placeholder="e.g., 1000" disabled={isSaving || isValidating} className="mt-1 bg-muted/30 focus:bg-background" />
+            </div>
+            <Button type="button" onClick={handleValidate} variant="outline" disabled={isValidating || isSaving || !formData.pineScript?.trim() || !formData.explanation?.trim()} className="w-full sm:w-auto">
               {isValidating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
               Validate Consistency (AI)
             </Button>
+            {isSuggestingParameters && (
+                <div className="flex items-center text-sm text-muted-foreground mt-2">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    AI is analyzing your strategy to suggest parameters...
+                </div>
+            )}
             {validationResult && (
               <Alert variant={validationResult.isConsistent ? "default" : "destructive"} className={`mt-3 ${validationResult.isConsistent ? "bg-green-500/10 border-green-500/30 text-green-700" : "bg-yellow-500/10 border-yellow-500/30 text-yellow-700"}`}>
                 <AlertTitle className="flex items-center font-semibold">
@@ -310,45 +375,15 @@ export function StrategyDevelopmentCard() {
                 <AlertDescription className="whitespace-pre-wrap text-sm">{validationResult.feedback}</AlertDescription>
               </Alert>
             )}
-          </section>
-
-          <Separator />
-
-          {/* Section 2: AI Parameter Suggestion */}
-          <section className="space-y-4 p-6 border rounded-lg shadow-sm bg-card">
-            <h3 className="text-xl font-semibold flex items-center text-primary"><Sparkles className="mr-2 h-5 w-5" /> 2. Get AI Parameter Suggestions</h3>
-            <div>
-                <Label htmlFor="capital" className="text-sm font-medium">Your Trading Capital (for AI context)</Label>
-                <Input id="capital" name="capital" type="number" value={formData.capital} onChange={handleInputChange} placeholder="e.g., 1000" disabled={isSaving || isValidating || isSuggesting} className="mt-1 bg-muted/30 focus:bg-background" />
-            </div>
-            <Button type="button" onClick={handleSuggestParameters} variant="outline" disabled={isSuggesting || isSaving || isValidating || (!formData.pineScript?.trim() && !formData.explanation?.trim())} className="w-full sm:w-auto">
-              {isSuggesting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-              Suggest & Auto-Fill Bot Parameters (AI)
-            </Button>
-            {suggestionResult && (
+             {suggestionResult && (
               <div className="mt-4 space-y-3 p-4 border rounded-md bg-muted/20">
-                <h4 className="font-semibold text-md text-foreground">AI Analysis & Suggestions:</h4>
+                <h4 className="font-semibold text-md text-foreground flex items-center"><Sparkles className="mr-2 h-5 w-5 text-primary" /> AI Parameter Analysis:</h4>
                 <Alert variant="default" className="bg-primary/5 border-primary/20">
                     <Sparkles className="h-5 w-5 text-primary"/>
                     <AlertTitle className="font-semibold text-primary">AI Summary</AlertTitle>
                     <AlertDescription className="text-sm whitespace-pre-wrap text-primary/90">{suggestionResult.summary}</AlertDescription>
                 </Alert>
-
-                {Object.values(suggestionResult.suggestions).some(val => val !== undefined) && (
-                  <div className="p-3 border rounded-md bg-background/50">
-                    <p className="text-sm font-medium text-foreground mb-2">The following fields were auto-filled with AI suggestions. Please review and adjust:</p>
-                    <ul className="list-disc list-inside text-sm ml-4 space-y-1 text-muted-foreground">
-                      {suggestionResult.suggestions.targetSymbols?.map(s => <li key={s}>Target Symbol: {s}</li>)}
-                      {suggestionResult.suggestions.emaShortPeriod !== undefined && <li>EMA Short: {suggestionResult.suggestions.emaShortPeriod}</li>}
-                      {suggestionResult.suggestions.emaMediumPeriod !== undefined && <li>EMA Medium: {suggestionResult.suggestions.emaMediumPeriod}</li>}
-                      {suggestionResult.suggestions.emaLongPeriod !== undefined && <li>EMA Long: {suggestionResult.suggestions.emaLongPeriod}</li>}
-                      {suggestionResult.suggestions.atrPeriod !== undefined && <li>ATR Period: {suggestionResult.suggestions.atrPeriod}</li>}
-                      {suggestionResult.suggestions.stopLossMultiplier !== undefined && <li>Stop Loss Multiplier: {suggestionResult.suggestions.stopLossMultiplier}</li>}
-                      {suggestionResult.suggestions.takeProfitMultiplier !== undefined && <li>Take Profit Multiplier: {suggestionResult.suggestions.takeProfitMultiplier}</li>}
-                    </ul>
-                  </div>
-                )}
-                {suggestionResult.aiAssumptions && <p className="text-xs italic text-muted-foreground"><strong>AI Assumptions:</strong> {suggestionResult.aiAssumptions}</p>}
+                 {suggestionResult.aiAssumptions && <p className="text-xs italic text-muted-foreground"><strong>AI Assumptions:</strong> {suggestionResult.aiAssumptions}</p>}
                 {suggestionResult.warnings && suggestionResult.warnings.length > 0 && (
                     <Alert variant="default" className="bg-amber-500/10 border-amber-500/30">
                         <AlertTriangle className="h-5 w-5 text-amber-600" />
@@ -356,16 +391,19 @@ export function StrategyDevelopmentCard() {
                         <AlertDescription><ul className="list-disc list-inside text-sm text-amber-800">{suggestionResult.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul></AlertDescription>
                     </Alert>
                 )}
-                 <p className="text-xs text-muted-foreground mt-2">AI suggestions have pre-filled relevant fields below. Please review and adjust them, especially risk parameters like Stop Loss and Take Profit multipliers if they were not suggested or if your Pine Script uses different logic.</p>
+                 <p className="text-xs text-muted-foreground mt-2">AI suggestions have pre-filled relevant fields in Section 2 below. Please review and adjust them, especially risk parameters like Stop Loss and Take Profit multipliers if they were not suggested or if your Pine Script uses different logic.</p>
               </div>
             )}
           </section>
           
           <Separator />
 
-          {/* Section 3: Bot Configuration & Activation */}
+          {/* Section 2 (formerly 3): Bot Configuration & Activation */}
           <section className="space-y-6 p-6 border rounded-lg shadow-sm bg-card">
-            <h3 className="text-xl font-semibold flex items-center text-primary"><BotIcon className="mr-2 h-5 w-5" /> 3. Configure Bot & Activate</h3>
+            <h3 className="text-xl font-semibold flex items-center text-primary"><BotIcon className="mr-2 h-5 w-5" /> 2. Configure Bot & Activate</h3>
+             <p className="text-sm text-muted-foreground -mt-4">
+              The fields below may have been auto-filled by AI analysis of your script. Review and adjust as needed.
+            </p>
             <div>
                 <Label htmlFor="targetSymbols" className="text-sm font-medium">Target Symbols (comma-separated)</Label>
                 <Input id="targetSymbols" name="targetSymbols" value={formData.targetSymbols} onChange={handleInputChange} placeholder="e.g., BTCUSDT, ETHUSDT (AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
@@ -390,7 +428,7 @@ export function StrategyDevelopmentCard() {
                     <Input id="takeProfitMultiplier" name="takeProfitMultiplier" type="number" step="0.1" value={formData.takeProfitMultiplier} onChange={handleInputChange} placeholder="e.g., 3 (Set Manually or AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
                 </div>
             </div>
-             <p className="text-xs text-muted-foreground -mt-3">These multipliers are applied to the ATR value. Ensure they align with your strategy's risk management.</p>
+             <p className="text-xs text-muted-foreground -mt-3">These multipliers are applied to the ATR value. Ensure they align with your strategy's risk management. If AI didn't suggest these, you MUST set them if your strategy uses ATR-based exits.</p>
              <div>
                 <Label htmlFor="tradingEnabled" className="flex items-center justify-between text-sm font-medium">
                 <span>Trading Enabled (Activate Bot)</span>
@@ -398,7 +436,7 @@ export function StrategyDevelopmentCard() {
                 </Label>
                  <p className="text-xs text-muted-foreground mt-1">This will enable/disable the bot based on the saved configuration.</p>
             </div>
-            <Button type="submit" disabled={isSaving || isValidating || isSuggesting || isLoadingInitialData} className="w-full text-base py-3 h-12">
+            <Button type="submit" disabled={isSaving || isValidating || isLoadingInitialData || isSuggestingParameters} className="w-full text-base py-3 h-12">
               {isSaving ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="mr-2 h-5 w-5" />}
               Save Strategy & Bot Configuration
             </Button>
@@ -408,4 +446,3 @@ export function StrategyDevelopmentCard() {
     </Card>
   );
 }
-
