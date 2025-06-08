@@ -12,10 +12,9 @@ import { useToast } from '@/hooks/use-toast';
 import type { CustomStrategyDoc, BotConfig } from '@/types';
 import { getCustomStrategyDoc, getBotConfiguration } from '@/lib/firestoreService';
 import { validateStrategyConsistency, type StrategyValidationOutput } from '@/ai/flows/strategy-validator-flow';
-// Removed: import { suggestBotConfigParameters, type StrategyConfigSuggesterInput, type StrategyConfigSuggesterOutput } from '@/ai/flows/strategy-config-suggester-flow';
 import { saveStrategyAndConfigurationAction } from '@/app/actions';
 
-import { Loader2, Save, FileText, Wand2, AlertTriangle, CheckCircle2, Bot as BotIcon } from 'lucide-react';
+import { Loader2, Save, FileText, Wand2, AlertTriangle, CheckCircle2, Bot as BotIcon, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 
@@ -224,11 +223,11 @@ export function StrategyDevelopmentCard() {
       <CardHeader>
         <CardTitle className="flex items-center"><BotIcon className="mr-2 h-6 w-6 text-primary" /> Bot & Strategy Hub</CardTitle>
         <CardDescription>
-          Input your Pine Script and explanation. Validate consistency with AI. Then, manually configure and activate your bot.
+          Define your strategy using Pine Script and a natural language explanation. Validate consistency with AI, then configure and activate your backend bot.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {error && (
+        {error && !isSaving && ( // Only show general error if not related to a save attempt
           <Alert variant="destructive" className="mb-6">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Error</AlertTitle>
@@ -246,18 +245,19 @@ export function StrategyDevelopmentCard() {
             </div>
             <div>
               <Label htmlFor="explanation" className="text-sm font-medium">Strategy Explanation (Natural Language)</Label>
-              <Textarea id="explanation" name="explanation" value={formData.explanation || ''} onChange={handleInputChange} placeholder="Explain how your strategy works..." className="mt-1 h-32 bg-muted/30 focus:bg-background" disabled={isSaving || isValidating} />
+              <Textarea id="explanation" name="explanation" value={formData.explanation || ''} onChange={handleInputChange} placeholder="Explain how your strategy works (indicators, entry/exit conditions, risk management ideas, etc.)..." className="mt-1 h-32 bg-muted/30 focus:bg-background" disabled={isSaving || isValidating} />
             </div>
              <div>
-                <Label htmlFor="capital" className="text-sm font-medium">Your Trading Capital (for bot reference & context)</Label>
+                <Label htmlFor="capital" className="text-sm font-medium">Your Trading Capital (USD - for bot context)</Label>
                 <Input id="capital" name="capital" type="number" value={formData.capital} onChange={handleInputChange} placeholder="e.g., 1000" disabled={isSaving || isValidating} className="mt-1 bg-muted/30 focus:bg-background" />
+                 <p className="text-xs text-muted-foreground mt-1">This value is saved for your bot's reference. Actual trade sizing logic is handled by your backend bot.</p>
             </div>
             <Button type="button" onClick={handleValidate} variant="outline" disabled={isValidating || isSaving || (!formData.pineScript?.trim() && !formData.explanation?.trim())} className="w-full sm:w-auto">
               {isValidating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
               Validate Consistency (AI)
             </Button>
             {validationResult && (
-              <Alert variant={validationResult.isConsistent ? "default" : "destructive"} className={`mt-3 ${validationResult.isConsistent ? "bg-green-500/10 border-green-500/30 text-green-700" : "bg-yellow-500/10 border-yellow-500/30 text-yellow-700"}`}>
+              <Alert variant={validationResult.isConsistent ? "default" : "destructive"} className={`mt-3 ${validationResult.isConsistent ? "bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-300" : "bg-yellow-500/10 border-yellow-500/30 text-yellow-700 dark:text-yellow-300"}`}>
                 <AlertTitle className="flex items-center font-semibold">
                    {validationResult.isConsistent ? <CheckCircle2 className="mr-2 h-5 w-5"/> : <AlertTriangle className="mr-2 h-5 w-5"/>}
                    AI Validation: {validationResult.isConsistent ? "Consistent" : "Potential Mismatches"}
@@ -272,41 +272,45 @@ export function StrategyDevelopmentCard() {
           {/* Section 2: Bot Configuration & Activation */}
           <section className="space-y-6 p-6 border rounded-lg shadow-sm bg-card">
             <h3 className="text-xl font-semibold flex items-center text-primary"><BotIcon className="mr-2 h-5 w-5" /> 2. Configure Bot & Activate</h3>
-             <p className="text-sm text-muted-foreground -mt-4">
-              Manually enter all parameters for your bot below. These settings will be used by your backend trading bot.
-              Ensure Stop Loss and Take Profit multipliers are appropriate for your risk strategy.
-            </p>
+             <Alert variant="default" className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300">
+                <Info className="h-5 w-5" />
+                <AlertTitle className="font-semibold">Manual Configuration Required</AlertTitle>
+                <AlertDescription>
+                Manually enter all parameters for your bot below. These exact settings will be saved to Firestore and used by your backend trading bot.
+                Ensure Stop Loss and Take Profit multipliers reflect your strategy's risk management.
+                </AlertDescription>
+            </Alert>
             <div>
                 <Label htmlFor="targetSymbols" className="text-sm font-medium">Target Symbols (comma-separated)</Label>
                 <Input id="targetSymbols" name="targetSymbols" value={formData.targetSymbols} onChange={handleInputChange} placeholder="e.g., BTCUSDT, ETHUSDT" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><Label htmlFor="emaShortPeriod" className="text-sm font-medium">EMA Short</Label><Input id="emaShortPeriod" name="emaShortPeriod" type="number" value={formData.emaShortPeriod || ''} onChange={handleInputChange} placeholder="e.g., 9" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
-                <div><Label htmlFor="emaMediumPeriod" className="text-sm font-medium">EMA Medium</Label><Input id="emaMediumPeriod" name="emaMediumPeriod" type="number" value={formData.emaMediumPeriod || ''} onChange={handleInputChange} placeholder="e.g., 21" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
-                <div><Label htmlFor="emaLongPeriod" className="text-sm font-medium">EMA Long</Label><Input id="emaLongPeriod" name="emaLongPeriod" type="number" value={formData.emaLongPeriod || ''} onChange={handleInputChange} placeholder="e.g., 55" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
+                <div><Label htmlFor="emaShortPeriod" className="text-sm font-medium">EMA Short Period</Label><Input id="emaShortPeriod" name="emaShortPeriod" type="number" value={formData.emaShortPeriod || ''} onChange={handleInputChange} placeholder="e.g., 9" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
+                <div><Label htmlFor="emaMediumPeriod" className="text-sm font-medium">EMA Medium Period</Label><Input id="emaMediumPeriod" name="emaMediumPeriod" type="number" value={formData.emaMediumPeriod || ''} onChange={handleInputChange} placeholder="e.g., 21" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
+                <div><Label htmlFor="emaLongPeriod" className="text-sm font-medium">EMA Long Period</Label><Input id="emaLongPeriod" name="emaLongPeriod" type="number" value={formData.emaLongPeriod || ''} onChange={handleInputChange} placeholder="e.g., 55" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
             </div>
             <div>
-                <Label htmlFor="atrPeriod" className="text-sm font-medium">ATR Period (for SL/TP)</Label>
+                <Label htmlFor="atrPeriod" className="text-sm font-medium">ATR Period (for SL/TP calculation)</Label>
                 <Input id="atrPeriod" name="atrPeriod" type="number" value={formData.atrPeriod || ''} onChange={handleInputChange} placeholder="e.g., 14" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
                 <p className="text-xs text-muted-foreground mt-1">Required if using ATR-based Stop Loss/Take Profit multipliers.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <Label htmlFor="stopLossMultiplier" className="text-sm font-medium">Stop Loss Multiplier (ATR-based)</Label>
-                    <Input id="stopLossMultiplier" name="stopLossMultiplier" type="number" step="0.1" value={formData.stopLossMultiplier || ''} onChange={handleInputChange} placeholder="e.g., 1.5" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
+                    <Input id="stopLossMultiplier" name="stopLossMultiplier" type="number" step="0.1" value={formData.stopLossMultiplier || ''} onChange={handleInputChange} placeholder="e.g., 1.5 (for 1.5 * ATR)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
                 </div>
                 <div>
                     <Label htmlFor="takeProfitMultiplier" className="text-sm font-medium">Take Profit Multiplier (ATR-based)</Label>
-                    <Input id="takeProfitMultiplier" name="takeProfitMultiplier" type="number" step="0.1" value={formData.takeProfitMultiplier || ''} onChange={handleInputChange} placeholder="e.g., 3" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
+                    <Input id="takeProfitMultiplier" name="takeProfitMultiplier" type="number" step="0.1" value={formData.takeProfitMultiplier || ''} onChange={handleInputChange} placeholder="e.g., 3 (for 3 * ATR)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
                 </div>
             </div>
-             <p className="text-xs text-muted-foreground -mt-3">These multipliers are applied to the ATR value. Ensure they align with your strategy's risk management.</p>
+             <p className="text-xs text-muted-foreground -mt-3">These multipliers are applied to the ATR value by your backend bot. Ensure they align with your strategy's risk management.</p>
              <div>
                 <Label htmlFor="tradingEnabled" className="flex items-center justify-between text-sm font-medium">
                 <span>Trading Enabled (Activate Bot)</span>
                 <Switch id="tradingEnabled" name="tradingEnabled" checked={formData.tradingEnabled} onCheckedChange={handleSwitchChange} disabled={isSaving} />
                 </Label>
-                 <p className="text-xs text-muted-foreground mt-1">This will enable/disable the bot based on the saved configuration.</p>
+                 <p className="text-xs text-muted-foreground mt-1">This switch tells your <span className="font-semibold">backend trading bot</span> whether to start or stop its trading activities based on the saved configuration.</p>
             </div>
             <Button type="submit" disabled={isSaving || isValidating || isLoadingInitialData} className="w-full text-base py-3 h-12">
               {isSaving ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="mr-2 h-5 w-5" />}
