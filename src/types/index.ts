@@ -24,7 +24,7 @@ export interface BotLog {
 export interface BotConfig {
   botName?: string;
   version?: string;
-  targetSymbols?: string[]; // Updated to string[]
+  targetSymbols?: string[]; 
   emaShortPeriod?: number;
   emaMediumPeriod?: number;
   emaLongPeriod?: number;
@@ -33,6 +33,7 @@ export interface BotConfig {
   takeProfitMultiplier?: number;
   tradingEnabled?: boolean;
   telegramChatId?: string;
+  capital?: number; // Added capital for bot reference
   // Allow any other string-keyed properties for flexibility
   [key: string]: string | number | boolean | string[] | undefined;
 }
@@ -55,23 +56,8 @@ export interface CustomStrategyDoc {
   explanation?: string;
 }
 
-// Types for AI Configuration Suggester
-export interface StrategyConfigSuggesterInput {
-  strategyDescription: string;
-  capital: number;
-}
+// Removed types related to StrategyConfigSuggester as the flow is deleted:
+// - StrategyConfigSuggesterInput
+// - SuggestedBotConfig
+// - StrategyConfigSuggesterOutput
 
-export interface SuggestedBotConfig {
-  targetSymbols?: string[];
-  emaShortPeriod?: number;
-  emaMediumPeriod?: number;
-  emaLongPeriod?: number;
-  atrPeriod?: number;
-}
-
-export interface StrategyConfigSuggesterOutput {
-  suggestions: SuggestedBotConfig;
-  aiAssumptions?: string;
-  warnings?: string[];
-  summary: string;
-}
