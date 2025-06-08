@@ -22,7 +22,7 @@ interface FormData {
 export function StrategyAssistantCard() {
   const [formData, setFormData] = useState<FormData>({
     capital: '1000',
-    tradeSize: '50',
+    tradeSize: '50', // This is the margin used for the trade for calculation purposes
     takeProfitValue: '60', // e.g., $50 margin becomes $60
     stopLossValue: '45',   // e.g., $50 margin becomes $45
   });
@@ -43,7 +43,7 @@ export function StrategyAssistantCard() {
 
     const parsedInput: StrategyAssistantInput = {
       capital: parseFloat(formData.capital),
-      tradeSize: parseFloat(formData.tradeSize),
+      tradeSize: parseFloat(formData.tradeSize), // This 'tradeSize' is the margin/value at risk for this specific scenario calculation
       takeProfitValue: parseFloat(formData.takeProfitValue),
       stopLossValue: parseFloat(formData.stopLossValue),
     };
@@ -54,23 +54,23 @@ export function StrategyAssistantCard() {
       return;
     }
     if (parsedInput.tradeSize <=0) {
-        setError("Trade size must be positive.");
-        toast({ title: "Input Error", description: "Trade size must be positive.", variant: "destructive" });
+        setError("Margin per trade for this calculation must be positive.");
+        toast({ title: "Input Error", description: "Margin per trade must be positive.", variant: "destructive" });
         return;
     }
     if (parsedInput.takeProfitValue <= parsedInput.tradeSize) {
-        setError("Take profit value must be greater than trade size.");
-        toast({ title: "Input Error", description: "Take profit value must be greater than trade size.", variant: "destructive" });
+        setError("Take profit value must be greater than the margin per trade.");
+        toast({ title: "Input Error", description: "Take profit value must be greater than margin per trade.", variant: "destructive" });
         return;
     }
     if (parsedInput.stopLossValue >= parsedInput.tradeSize) {
-        setError("Stop loss value must be less than trade size.");
-        toast({ title: "Input Error", description: "Stop loss value must be less than trade size.", variant: "destructive" });
+        setError("Stop loss value must be less than the margin per trade.");
+        toast({ title: "Input Error", description: "Stop loss value must be less than margin per trade.", variant: "destructive" });
         return;
     }
      if (parsedInput.tradeSize > parsedInput.capital) {
-        setError("Trade size cannot exceed total capital.");
-        toast({ title: "Input Error", description: "Trade size cannot exceed total capital.", variant: "destructive" });
+        setError("Margin per trade for this calculation cannot exceed total capital.");
+        toast({ title: "Input Error", description: "Margin per trade cannot exceed total capital.", variant: "destructive" });
         return;
     }
 
@@ -79,17 +79,16 @@ export function StrategyAssistantCard() {
       try {
         const result = await getStrategySuggestions(parsedInput);
         if (!result.isValidInput && result.explanation) {
-            setError(result.explanation); // Display AI's validation message
+            setError(result.explanation);
             toast({ title: "Input Validation Error by AI", description: result.explanation, variant: "destructive" });
-            setSuggestions(null); // Clear previous suggestions if any
+            setSuggestions(null);
         } else if (!result.isValidInput) {
-            // Fallback if AI marks invalid but provides no explanation (should not happen with current prompt)
             setError("The AI determined the inputs were invalid but provided no specific reason. Please check your values.");
             toast({ title: "Input Validation Error by AI", description: "Please check your values.", variant: "destructive"});
             setSuggestions(null);
         }
          else {
-            setSuggestions(result); // Set valid suggestions
+            setSuggestions(result);
             toast({ title: "AI Analysis Complete", description: "Review the AI's explanation below."});
         }
       } catch (err: any) {
@@ -110,7 +109,9 @@ export function StrategyAssistantCard() {
           AI Trade Value Assistant
         </CardTitle>
         <CardDescription>
-          Input your capital, trade size, and target take profit/stop loss values. The AI will explain implications like percentage change on margin and conceptual leverage. This tool is for analysis and does not configure the bot.
+          Plan a single trade scenario. Input your total capital, the dollar amount of margin you&apos;d use for one trade, and your target take profit/stop loss dollar values *for that margin amount*.
+          The AI will explain implications like percentage change on margin and conceptual leverage for this specific scenario.
+          This tool is for planning and does not directly configure the bot&apos;s ongoing trade size (that&apos;s set in the &quot;Bot & Strategy Hub&quot;).
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -121,8 +122,9 @@ export function StrategyAssistantCard() {
               <Input id="capital" name="capital" type="number" value={formData.capital} onChange={handleInputChange} placeholder="e.g., 1000" disabled={isPending} className="mt-1" />
             </div>
             <div>
-              <Label htmlFor="tradeSize">Margin per Trade ($)</Label>
+              <Label htmlFor="tradeSize">Margin for this Trade Scenario ($)</Label>
               <Input id="tradeSize" name="tradeSize" type="number" value={formData.tradeSize} onChange={handleInputChange} placeholder="e.g., 50" disabled={isPending} className="mt-1" />
+              <p className="text-xs text-muted-foreground mt-1">The dollar amount you are risking/using as margin for this specific calculation.</p>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -137,7 +139,7 @@ export function StrategyAssistantCard() {
                <p className="text-xs text-muted-foreground mt-1">If margin is $50, this is the SL value, e.g., $45.</p>
             </div>
           </div>
-          {error && !isPending && ( // Only show error if not pending and error exists
+          {error && !isPending && (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Error</AlertTitle>
@@ -168,14 +170,6 @@ export function StrategyAssistantCard() {
             </div>
           </div>
         )}
-         {/* This section is redundant if error state handles AI's isValidInput=false message */}
-         {/* suggestions && !suggestions.isValidInput && suggestions.explanation && (
-            <Alert variant="destructive" className="mt-6">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>AI Suggestion Error</AlertTitle>
-              <AlertDescription>{suggestions.explanation}</AlertDescription>
-            </Alert>
-         ) */}
       </CardContent>
     </Card>
   );

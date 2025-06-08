@@ -24,7 +24,7 @@ export interface BotLog {
 export interface BotConfig {
   botName?: string;
   version?: string;
-  targetSymbols?: string[]; 
+  targetSymbols?: string[];
   emaShortPeriod?: number;
   emaMediumPeriod?: number;
   emaLongPeriod?: number;
@@ -33,20 +33,22 @@ export interface BotConfig {
   takeProfitMultiplier?: number;
   tradingEnabled?: boolean;
   telegramChatId?: string;
-  capital?: number; 
+  capital?: number;
+  timeframe?: string; // e.g., '1m', '5m', '1h', '4h', '1d'
+  tradeAmountUSD?: number; // Desired trade size in USD per position
   [key: string]: string | number | boolean | string[] | undefined;
 }
 
 export interface KeyMetric {
   label: string;
   value: string | number;
-  change?: string; 
+  change?: string;
   changeType?: 'positive' | 'negative' | 'neutral';
 }
 
 export interface AccountBalance {
   usdtBalance: number;
-  totalEquity: number; 
+  totalEquity: number;
 }
 
 export interface CustomStrategyDoc {
