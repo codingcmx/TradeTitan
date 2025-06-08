@@ -1,43 +1,42 @@
 
 'use server';
 /**
- * @fileOverview An AI assistant to suggest bot configuration parameters based on a natural language strategy description.
+ * @fileOverview An AI assistant to suggest bot configuration parameters based on a natural language strategy description AND Pine Script.
  *
  * - suggestBotConfigParameters - A function that provides suggestions for bot config.
- * - StrategyConfigSuggesterInput - The input type.
+ * - StrategyConfigSuggesterInput - The input type. (Now includes pineScript and explanation separately in a combined string)
  * - StrategyConfigSuggesterOutput - The return type.
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import type { BotConfig } from '@/types'; // Assuming BotConfig is in types
+// import type { BotConfig } from '@/types'; // Not directly outputting BotConfig, but SuggestedBotConfig
 
 const StrategyConfigSuggesterInputSchema = z.object({
-  strategyDescription: z.string().min(10).describe('A natural language description of the trading strategy.'),
-  capital: z.number().positive().describe('The total available trading capital.'),
+  // The strategyDescription will now be a combination of Pine Script and Explanation
+  strategyDescription: z.string().min(10).describe('A combined string containing Pine Script and its natural language explanation.'),
+  capital: z.number().positive().describe('The total available trading capital (for AI context, not for direct trade size calculation by AI).'),
 });
 export type StrategyConfigSuggesterInput = z.infer<typeof StrategyConfigSuggesterInputSchema>;
 
-// Zod schema for the 'suggestions' part of the output, mapping to BotConfig fields
 const SuggestedBotConfigSchema = z.object({
-  targetSymbols: z.array(z.string()).optional().describe('Suggested target symbols if mentioned (e.g., ["BTCUSDT", "ETHUSDT"]).'),
-  emaShortPeriod: z.number().int().positive().optional().describe('Suggested period for a short-term Exponential Moving Average if mentioned (e.g., 9, 12).'),
-  emaMediumPeriod: z.number().int().positive().optional().describe('Suggested period for a medium-term Exponential Moving Average if mentioned (e.g., 21, 26).'),
-  emaLongPeriod: z.number().int().positive().optional().describe('Suggested period for a long-term Exponential Moving Average if mentioned (e.g., 50, 100, 200).'),
-  atrPeriod: z.number().int().positive().optional().describe('Suggested period for Average True Range (ATR) if mentioned (e.g., 14).'),
-  // We are not asking the AI to suggest these yet, as they are complex to derive from NL + budget.
-  // User should set these based on risk tolerance and ATR understanding.
-  // stopLossMultiplier: z.number().positive().optional().describe('Suggested ATR multiplier for stop loss if determinable.'),
-  // takeProfitMultiplier: z.number().positive().optional().describe('Suggested ATR multiplier for take profit if determinable.'),
-}).describe("Suggested parameters for the bot configuration based on the user's strategy description. Only include fields if clearly inferable from the description. Ensure periods are positive integers.");
+  targetSymbols: z.array(z.string()).optional().describe('Suggested target symbols if mentioned (e.g., ["BTCUSDT", "ETHUSDT"]). Prioritize Pine Script `tickerid` or similar.'),
+  emaShortPeriod: z.number().int().positive().optional().describe('Suggested period for a short-term EMA (e.g., from Pine `input.int(9, "Short EMA")`).'),
+  emaMediumPeriod: z.number().int().positive().optional().describe('Suggested period for a medium-term EMA (e.g., from Pine `input.int(21, "Medium EMA")`).'),
+  emaLongPeriod: z.number().int().positive().optional().describe('Suggested period for a long-term EMA (e.g., from Pine `input.int(55, "Long EMA")`).'),
+  atrPeriod: z.number().int().positive().optional().describe('Suggested period for ATR (e.g., from Pine `input.int(14, "ATR Period")`).'),
+  // The AI is NOT expected to reliably suggest these multipliers from generic Pine/NL. User must set these.
+  // stopLossMultiplier: z.number().positive().optional().describe('Suggested ATR multiplier for stop loss if explicitly determinable from a very clear pattern.'),
+  // takeProfitMultiplier: z.number().positive().optional().describe('Suggested ATR multiplier for take profit if explicitly determinable.'),
+}).describe("Suggested parameters for the bot configuration based on the user's Pine Script and strategy explanation. Only include fields if clearly inferable. Ensure periods are positive integers.");
 export type SuggestedBotConfig = z.infer<typeof SuggestedBotConfigSchema>;
 
 
 const StrategyConfigSuggesterOutputSchema = z.object({
   suggestions: SuggestedBotConfigSchema,
-  aiAssumptions: z.string().optional().describe("Any assumptions the AI made while deriving the parameters (e.g., 'Assumed standard EMA usage for crossovers', 'Assumed common default period for unspecified indicators')."),
-  warnings: z.array(z.string()).optional().describe("Any warnings, parameters the AI couldn't determine, or indicators mentioned but not supported by the current config fields (e.g., 'Could not determine specific take profit levels from the description.', 'RSI period mentioned but not a direct config field. User should configure this manually if their bot supports it.')."),
-  summary: z.string().describe("A brief summary of the AI's understanding of the strategy and the parameters it suggested. This summary should also remind the user to carefully review and adjust parameters, especially risk management settings like stop-loss and take-profit multipliers, based on their capital and risk tolerance, as these are not directly suggested by the AI."),
+  aiAssumptions: z.string().optional().describe("Any assumptions the AI made (e.g., 'Assumed standard EMA usage for crossovers', 'Interpreted `input.int(X)` as a parameter')."),
+  warnings: z.array(z.string()).optional().describe("Any warnings, parameters the AI couldn't determine, or indicators mentioned but not supported by the current config fields (e.g., 'Could not determine specific take profit levels from the description.', 'RSI mentioned; user needs to implement RSI logic in bot or use a bot supporting it.')."),
+  summary: z.string().describe("A brief summary of the AI's understanding of the strategy and the parameters it suggested. This summary MUST remind the user to carefully review and MANUALLY SET critical risk management parameters like stop-loss and take-profit multipliers, as the AI does not suggest these."),
 });
 export type StrategyConfigSuggesterOutput = z.infer<typeof StrategyConfigSuggesterOutputSchema>;
 
@@ -47,43 +46,40 @@ export async function suggestBotConfigParameters(input: StrategyConfigSuggesterI
 }
 
 const systemPrompt = `You are an AI Trading Strategy Configuration Assistant.
-The user will provide a natural language description of their trading strategy and their available capital.
-Your goal is to extract relevant parameters from the strategy description and suggest values for a predefined set of bot configuration fields.
+The user will provide their Pine Script code, a natural language explanation of the strategy, and their available capital.
+Your goal is to extract relevant parameters primarily from the Pine Script (e.g., from \`input.int()\`, \`input.symbol()\`) and secondarily from the explanation to suggest values for a predefined set of bot configuration fields.
 
-The bot configuration supports the following parameters that you can suggest values for:
-- targetSymbols: array of strings (e.g., ["BTCUSDT", "ETHUSDT"]). Look for explicitly mentioned trading pairs.
-- emaShortPeriod: number (e.g., for EMA 9, EMA 10, EMA 12). This is typically the fastest EMA in a multi-EMA strategy.
-- emaMediumPeriod: number (e.g., EMA 20, EMA 21, EMA 26). This is the middle EMA or the slower EMA in a two-EMA strategy.
-- emaLongPeriod: number (e.g., EMA 50, EMA 100, EMA 200). This is the slowest EMA in a three-EMA strategy.
-- atrPeriod: number (for Average True Range period, e.g., 14).
+The bot configuration supports the following parameters that you can suggest values for from the Pine Script/explanation:
+- targetSymbols: array of strings (e.g., ["BTCUSDT", "ETHUSDT"]). Look for \`tickerid\` in Pine Script or explicitly mentioned trading pairs. If "Bitcoin" is mentioned and no specific pair, suggest "BTCUSDT".
+- emaShortPeriod: number (e.g., from \`ema(close, input.int(9, title="Short EMA"))\`). This is typically the fastest EMA.
+- emaMediumPeriod: number (e.g., from \`ema(close, input.int(21, title="Mid EMA"))\`).
+- emaLongPeriod: number (e.g., from \`ema(close, input.int(50, title="Long EMA"))\`).
+- atrPeriod: number (e.g., from \`atr(input.int(14, title="ATR Period"))\`).
 
-From the user's strategy description:
-1.  **Parse Strategy Details**:
-    *   **Symbols**: Identify any explicitly mentioned trading symbols (e.g., "I want to trade Bitcoin and Ethereum against USDT"). If specific pairs like "BTCUSDT" are mentioned, use those. If "Bitcoin" is mentioned, suggest "BTCUSDT".
-    *   **EMAs**: Look for mentions of Exponential Moving Averages (EMAs) and their periods.
-        *   If one EMA period is mentioned (e.g., "use a 10-period EMA"), suggest it for 'emaShortPeriod'.
-        *   If two EMA periods are mentioned (e.g., "when the 10 EMA crosses above the 20 EMA"), assign the smaller number to 'emaShortPeriod' and the larger number to 'emaMediumPeriod'.
-        *   If three EMA periods are mentioned (e.g., "buy when 9 EMA is above 21 EMA, and 21 EMA is above 55 EMA"), assign them to 'emaShortPeriod', 'emaMediumPeriod', and 'emaLongPeriod' in increasing order of their numerical value.
-        *   If generic terms like "fast EMA", "slow EMA" are used without numbers, try to infer common values or state in 'aiAssumptions' if you pick a default (e.g., "fast EMA" as 9, "slow EMA" as 21). If no numbers are given at all for EMAs, do not suggest EMA periods.
-    *   **ATR**: Look for mentions of Average True Range (ATR) and its period (e.g., "ATR 14 for volatility"). Suggest this for 'atrPeriod'.
-    *   **Other Indicators**: If other indicators like RSI, MACD, Bollinger Bands, etc., are mentioned, acknowledge them in your 'summary' and add a note to the 'warnings' array stating that while the indicator was mentioned, the current bot configuration fields do not directly support its parameters, and the user would need to configure this manually if their bot's underlying code supports it.
+From the user's Pine Script and explanation:
+1.  **Prioritize Pine Script for Parameters**:
+    *   **Symbols**: Look for \`syminfo.tickerid\`, \`input.symbol()\`, or common ways symbols are defined or used in Pine Script.
+    *   **EMAs**: Examine \`ta.ema()\` calls and their length arguments, especially if linked to \`input.int()\` definitions (e.g., \`len = input.int(9, "EMA Length")\`, then \`ta.ema(source, len)\`). Identify up to three distinct EMA periods and map them to short, medium, long based on their values.
+    *   **ATR**: Examine \`ta.atr()\` calls and their length arguments, especially if linked to \`input.int()\`.
+    *   If parameters are hardcoded in Pine Script (e.g., \`ta.ema(close, 10)\`), use those values.
+2.  **Use Explanation for Clarification**: If Pine Script is ambiguous or uses variables without clear \`input\` definitions, use the natural language explanation to help infer the parameter values.
+3.  **Handle Unclear Parameters**:
+    *   If an EMA or ATR period is mentioned generically (e.g., "a fast EMA") without a number in Pine Script or explanation, do NOT suggest a value. State this in 'warnings'.
+    *   If other indicators (RSI, MACD, etc.) are found in Pine Script or mentioned in the explanation, acknowledge them in 'summary' and add to 'warnings' that the current bot config fields don't directly support them.
+4.  **Output**:
+    *   Strictly adhere to 'StrategyConfigSuggesterOutputSchema'.
+    *   Populate 'suggestions' only with parameters you confidently extracted. All periods MUST be positive integers.
+    *   Use 'aiAssumptions' for any logical leaps (e.g., "Assumed 'EMA1' in comments refers to the 9-period EMA defined in inputs").
+    *   Use 'warnings' for parameters not extractable or indicators not supported by the output schema.
+    *   The 'summary' MUST remind the user:
+        *   To review all AI suggestions.
+        *   That they MUST MANUALLY set crucial risk management parameters like stop-loss multipliers and take-profit multipliers in the bot configuration section.
+        *   That the provided capital (\`\${{{capital}}}\`) is for their context and they need to manage trade size/position sizing themselves.
+        *   Explicitly state that YOU ARE NOT SUGGESTING stop-loss or take-profit multipliers.
 
-2.  **Populate Output**:
-    *   Strictly adhere to the 'StrategyConfigSuggesterOutputSchema'.
-    *   Populate the 'suggestions' object with the parameters you could confidently extract as numbers (for periods) or strings (for symbols). All periods must be positive integers.
-    *   Use 'aiAssumptions' to list any assumptions made (e.g., "Assumed 'fast EMA' refers to the shortest period mentioned if multiple options were possible", "Assumed common default period like 14 for an unspecified ATR").
-    *   Use 'warnings' for parameters mentioned by the user but not extractable, not fitting the schema (e.g., non-integer period), or for indicators not directly supported by the suggestion fields.
-    *   Provide a concise 'summary' of your understanding. This summary MUST include:
-        *   A brief restatement of the core strategy elements you identified.
-        *   The parameters you are suggesting.
-        *   A reminder that the user's provided capital of \`\${{{capital}}}\` should be considered for their own risk management and position sizing logic, which they must set themselves (e.g. stop-loss multipliers, take-profit multipliers, trade size). Explicitly state that you are NOT suggesting specific stop-loss or take-profit multipliers.
+User's combined strategy input (Pine Script and Explanation):
+{{{strategyDescription}}}
 
-3.  **Important Considerations**:
-    *   If a parameter is not clearly mentioned or inferable, do not include it in the 'suggestions' object. It's better to omit a suggestion than to guess wildly.
-    *   Focus only on the parameters defined in the 'SuggestedBotConfigSchema' for the 'suggestions' field.
-    *   If the user's description is too vague to extract any specific numerical parameters for EMAs or ATR, the 'suggestions' object might be empty or only contain 'targetSymbols'. This is acceptable. Your summary should reflect this.
-
-User's strategy description: {{{strategyDescription}}}
 User's capital: {{{capital}}}
 
 Respond ONLY with a valid JSON object that conforms to the StrategyConfigSuggesterOutputSchema.
@@ -94,21 +90,15 @@ const strategyConfigSuggesterFlow = ai.defineFlow(
     name: 'strategyConfigSuggesterFlow',
     inputSchema: StrategyConfigSuggesterInputSchema,
     outputSchema: StrategyConfigSuggesterOutputSchema,
-    prompt: systemPrompt, // Using direct prompt for this structure
-    model: 'googleai/gemini-2.0-flash', // or another suitable model
+    // System prompt is complex, so we'll use it in the direct ai.generate call
+    // prompt: systemPrompt, // Not using this here for more control
+    model: 'googleai/gemini-2.0-flash', 
   },
   async (input) => {
-    // The 'prompt' field in defineFlow with system and user messages is newer syntax.
-    // For this older structure using 'prompt' directly with handlebars, we make a direct call.
-    // This flow definition is primarily for making it callable and defining schema.
-    // The actual LLM call needs to be structured to pass the input to the prompt template.
-
-    // Since the prompt is defined in the flow config, Genkit handles templating.
-    // We just need to ensure the LLM call is made correctly if we were to customize logic here.
-    // However, with 'prompt' in flow definition, Genkit does this:
     const { output } = await ai.generate({
-        prompt: systemPrompt, // The prompt defined in the flow config which includes handlebars for input
-        input: input, // Pass the actual input for handlebars templating
+        // prompt: input.strategyDescription, // This is now part of the system prompt's context via handlebars
+        system: systemPrompt, // Pass the system prompt with handlebars for input
+        input: input, // Provide the input for handlebars templating within the systemPrompt
         output: { schema: StrategyConfigSuggesterOutputSchema },
         model: 'googleai/gemini-2.0-flash',
       });

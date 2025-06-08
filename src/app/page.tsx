@@ -1,16 +1,12 @@
 
-
 import { Header } from '@/components/layout/Header';
 import { TradeHistoryCard } from '@/components/cards/TradeHistoryCard';
-import { BotConfigCard } from '@/components/cards/BotConfigCard';
-import { StrategyAssistantCard } from '@/components/cards/StrategyAssistantCard';
-import { AiConfigSuggesterCard } from '@/components/cards/AiConfigSuggesterCard';
+import { StrategyDevelopmentCard } from '@/components/cards/StrategyDevelopmentCard'; // Renamed
 import { StatCard } from '@/components/cards/StatCard';
 import { AccountBalanceCard } from '@/components/cards/AccountBalanceCard';
 import { PlaceTradeCard } from '@/components/cards/PlaceTradeCard';
-import { CustomStrategyDocCard } from '@/components/cards/CustomStrategyDocCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { History, Settings, DollarSign, Percent, BarChart2, Send, Combine } from 'lucide-react';
+import { History, DollarSign, Percent, BarChart2, Send, Combine, Bot } from 'lucide-react'; // Added Bot
 import { getKeyMetrics } from '@/lib/firestoreService'; 
 import type { KeyMetric } from '@/types';
 
@@ -43,7 +39,7 @@ export default async function DashboardPage() {
         </div>
 
         <Tabs defaultValue="actions" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-4 bg-card border border-border shadow-sm">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 mb-4 bg-card border border-border shadow-sm"> {/* Adjusted grid-cols */}
             <TabsTrigger value="actions" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
               <Send className="mr-2 h-5 w-5" /> Actions
             </TabsTrigger>
@@ -51,11 +47,9 @@ export default async function DashboardPage() {
               <History className="mr-2 h-5 w-5" /> Trade History
             </TabsTrigger>
              <TabsTrigger value="strategyLab" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
-              <Combine className="mr-2 h-5 w-5" /> Strategy Lab
+              <Bot className="mr-2 h-5 w-5" /> Bot & Strategy Hub {/* Changed Icon and Name */}
             </TabsTrigger>
-            <TabsTrigger value="config" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
-              <Settings className="mr-2 h-5 w-5" /> Configuration
-            </TabsTrigger>
+            {/* Configuration Tab Removed */}
           </TabsList>
 
           <TabsContent value="actions">
@@ -70,23 +64,10 @@ export default async function DashboardPage() {
           <TabsContent value="strategyLab">
             <div className="grid gap-4 md:grid-cols-1">
               {/* @ts-expect-error Server Component */}
-              <CustomStrategyDocCard />
+              <StrategyDevelopmentCard /> {/* Renamed and will be enhanced */}
             </div>
           </TabsContent>
-          <TabsContent value="config">
-            <div className="grid gap-8 md:grid-cols-1 lg:grid-cols-1"> {/* Changed to 1 column for better layout with more cards */}
-              <div>
-                {/* @ts-expect-error Server Component */}
-                <BotConfigCard />
-              </div>
-              <div>
-                <StrategyAssistantCard />
-              </div>
-              <div>
-                <AiConfigSuggesterCard />
-              </div>
-            </div>
-          </TabsContent>
+          {/* Configuration Tab Content Removed */}
         </Tabs>
       </main>
       <footer className="py-4 px-8 text-center text-xs text-muted-foreground border-t border-border">
