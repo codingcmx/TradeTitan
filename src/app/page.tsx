@@ -6,9 +6,10 @@ import { StrategyAssistantCard } from '@/components/cards/StrategyAssistantCard'
 import { StatCard } from '@/components/cards/StatCard';
 import { AccountBalanceCard } from '@/components/cards/AccountBalanceCard';
 import { PlaceTradeCard } from '@/components/cards/PlaceTradeCard';
-import { BacktestingCard } from '@/components/cards/BacktestingCard'; // Added
+import { BacktestingCard } from '@/components/cards/BacktestingCard';
+import { TradeExecutionChart } from '@/components/charts/TradeExecutionChart'; // Added
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { History, DollarSign, Percent, BarChart2, Send, Bot, Lightbulb, SlidersHorizontal } from 'lucide-react';
+import { History, DollarSign, Percent, BarChart2, Send, Bot, Lightbulb, SlidersHorizontal, LineChart } from 'lucide-react';
 import { getKeyMetrics } from '@/lib/firestoreService'; 
 import type { KeyMetric } from '@/types';
 
@@ -42,9 +43,12 @@ export default async function DashboardPage() {
         </div>
 
         <Tabs defaultValue="actions" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-4 bg-card border border-border shadow-sm">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 mb-4 bg-card border border-border shadow-sm">
             <TabsTrigger value="actions" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
               <Send className="mr-2 h-5 w-5" /> Actions &amp; Analysis
+            </TabsTrigger>
+            <TabsTrigger value="charts" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
+              <LineChart className="mr-2 h-5 w-5" /> Charts
             </TabsTrigger>
             <TabsTrigger value="history" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
               <History className="mr-2 h-5 w-5" /> Trade History
@@ -62,6 +66,11 @@ export default async function DashboardPage() {
                 <PlaceTradeCard />
                 {/* @ts-expect-error Server Component */}
                 <StrategyAssistantCard /> 
+            </div>
+          </TabsContent>
+          <TabsContent value="charts">
+            <div className="grid gap-4 md:grid-cols-1">
+              <TradeExecutionChart />
             </div>
           </TabsContent>
           <TabsContent value="history">

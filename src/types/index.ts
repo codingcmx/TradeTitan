@@ -35,7 +35,6 @@ export interface BotConfig {
   telegramChatId?: string;
   capital?: number;
   timeframe?: string; // e.g., '1m', '5m', '1h', '4h', '1d'
-  // tradeAmountUSD removed from here
   [key: string]: string | number | boolean | string[] | undefined;
 }
 
@@ -69,7 +68,7 @@ export interface HistoricalDataPoint {
 export interface BacktestInput {
   historicalDataCsv: string; // CSV string: timestamp,open,high,low,close(,volume)
   initialCapital: number;
-  tradeAmountUSD: number; // Changed from tradeAmountPercentage
+  tradeAmountUSD: number; 
   targetSymbolOverride?: string; // Optional: to specify which symbol in CSV if BotConfig has multiple targetSymbols
 }
 
@@ -107,4 +106,22 @@ export interface BacktestOutput {
   errorMessage?: string;
   configUsed?: BotConfig; // To show what config was used for the backtest
   symbolTested: string;
+}
+
+// Type for Candlestick data
+export interface Candlestick {
+  timestamp: number; // Unix milliseconds
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export type HistoricalCandlesOutput = Candlestick[];
+
+export interface HistoricalCandlesInput {
+  symbol: string;
+  interval: string; // e.g., '1m', '5m', '1h', '4h', '1d'
+  limit?: number; // Number of candles, default 100
 }
