@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -34,7 +34,8 @@ const availableTimeframes = [
   { value: '8h', label: '8 Hours' }, { value: '12h', label: '12 Hours' }, { value: '1d', label: '1 Day' },
 ];
 
-const MAX_CANDLES = 500; // Max limit for Binance API is often 1500 for futures, 1000 for spot
+const MAX_CANDLES = 500; 
+const REFRESH_INTERVAL_MS = 1 * 60 * 1000; // Refresh every 1 minute
 
 export function TradeExecutionChart() {
   const [selectedSymbol, setSelectedSymbol] = useState<string>('');
@@ -60,9 +61,7 @@ export function TradeExecutionChart() {
       try {
         const fetchedSymbols = await getAvailableSymbols();
         setAvailableSymbols(fetchedSymbols);
-        if (fetchedSymbols.length > 0 && !selectedSymbol) {
-          // setSelectedSymbol(fetchedSymbols[0]); // Optionally auto-select first symbol
-        }
+        // No auto-selection, user picks
       } catch (err: any) {
         setSymbolError(err.message || "Failed to load symbols.");
       } finally {
@@ -70,57 +69,72 @@ export function TradeExecutionChart() {
       }
     }
     fetchSymbols();
-  }, [selectedSymbol]);
+  }, []);
+
+  const loadChartData = useCallback(async (isInitialLoad = false) => {
+    if (!selectedSymbol || !selectedTimeframe) {
+      setChartData([]);
+      setTradeHistory([]);
+      return;
+    }
+    if (isInitialLoad) setIsLoadingChartData(true); // Only show full loader on initial symbol/timeframe change
+    setChartError(null);
+    try {
+      const candleInput: HistoricalCandlesInput = {
+        symbol: selectedSymbol,
+        interval: selectedTimeframe,
+        limit: candleLimit > MAX_CANDLES ? MAX_CANDLES : candleLimit,
+      };
+      const [candles, trades] = await Promise.all([
+        getHistoricalCandles(candleInput),
+        getTradeHistory(200) 
+      ]);
+      
+      setChartData(candles.sort((a,b) => a.timestamp - b.timestamp));
+      
+      const firstCandleTime = candles[0]?.timestamp;
+      const lastCandleTime = candles[candles.length - 1]?.timestamp;
+
+      const relevantTrades = trades.filter(trade => 
+          trade.symbol === selectedSymbol &&
+          trade.timestampOpen &&
+          firstCandleTime && lastCandleTime &&
+          (
+              (trade.timestampOpen.getTime() >= firstCandleTime && trade.timestampOpen.getTime() <= lastCandleTime) ||
+              (trade.timestampClose && trade.timestampClose.getTime() >= firstCandleTime && trade.timestampClose.getTime() <= lastCandleTime) ||
+              (trade.timestampOpen.getTime() < firstCandleTime && trade.timestampClose && trade.timestampClose.getTime() > firstCandleTime) 
+          )
+      );
+      setTradeHistory(relevantTrades);
+
+    } catch (err: any) {
+      const errorMessage = err.message || "Failed to load chart data.";
+      setChartError(errorMessage);
+      if(isInitialLoad) { // Only toast on initial load errors
+        toast({ title: "Chart Error", description: errorMessage, variant: "destructive" });
+      }
+      setChartData([]);
+      setTradeHistory([]);
+    } finally {
+      if (isInitialLoad) setIsLoadingChartData(false);
+    }
+  }, [selectedSymbol, selectedTimeframe, candleLimit, toast]);
 
   useEffect(() => {
-    async function loadChartData() {
-      if (!selectedSymbol || !selectedTimeframe) {
-        setChartData([]);
-        setTradeHistory([]);
-        return;
-      }
-      setIsLoadingChartData(true);
-      setChartError(null);
-      try {
-        const candleInput: HistoricalCandlesInput = {
-          symbol: selectedSymbol,
-          interval: selectedTimeframe,
-          limit: candleLimit > MAX_CANDLES ? MAX_CANDLES : candleLimit,
-        };
-        const [candles, trades] = await Promise.all([
-          getHistoricalCandles(candleInput),
-          getTradeHistory(200) // Fetch more trades for better matching
-        ]);
-        
-        setChartData(candles.sort((a,b) => a.timestamp - b.timestamp)); // Ensure sorted by time for chart
-        
-        // Filter trades for the selected symbol and approximate time range of candles
-        const firstCandleTime = candles[0]?.timestamp;
-        const lastCandleTime = candles[candles.length - 1]?.timestamp;
+    loadChartData(true); // Initial load
+  }, [loadChartData]);
 
-        const relevantTrades = trades.filter(trade => 
-            trade.symbol === selectedSymbol &&
-            trade.timestampOpen &&
-            firstCandleTime && lastCandleTime &&
-            (
-                (trade.timestampOpen.getTime() >= firstCandleTime && trade.timestampOpen.getTime() <= lastCandleTime) ||
-                (trade.timestampClose && trade.timestampClose.getTime() >= firstCandleTime && trade.timestampClose.getTime() <= lastCandleTime) ||
-                (trade.timestampOpen.getTime() < firstCandleTime && trade.timestampClose && trade.timestampClose.getTime() > firstCandleTime) // Trade spans across chart start
-            )
-        );
-        setTradeHistory(relevantTrades);
+  useEffect(() => {
+    if (!selectedSymbol || !selectedTimeframe) return;
 
-      } catch (err: any) {
-        setChartError(err.message || "Failed to load chart data.");
-        toast({ title: "Chart Error", description: err.message, variant: "destructive" });
-        setChartData([]);
-        setTradeHistory([]);
-      } finally {
-        setIsLoadingChartData(false);
-      }
-    }
-    loadChartData();
-  }, [selectedSymbol, selectedTimeframe, candleLimit, toast]);
+    const intervalId = setInterval(() => {
+      // console.log('Refreshing chart data...'); // For debugging
+      loadChartData(false); // Subsequent loads are not "initial"
+    }, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(intervalId); // Cleanup interval on component unmount or when dependencies change
+  }, [selectedSymbol, selectedTimeframe, loadChartData]); // loadChartData is now a dependency
+
   
   const formattedChartData = useMemo(() => {
     return chartData.map(candle => ({
@@ -160,7 +174,7 @@ export function TradeExecutionChart() {
                 <ChartIcon className="mr-2 h-6 w-6 text-primary" />
                 Trade Execution Chart
                 </CardTitle>
-                <CardDescription>Visualize price action and your bot's trades.</CardDescription>
+                <CardDescription>Visualize price action and your bot's trades. Refreshes automatically.</CardDescription>
             </div>
              <div className="flex flex-col sm:flex-row gap-2 items-center w-full sm:w-auto">
                 <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
@@ -255,7 +269,7 @@ export function TradeExecutionChart() {
                 stroke="hsl(var(--muted-foreground))" 
                 tick={{ fontSize: 12 }} 
                 domain={['auto', 'auto']} 
-                tickFormatter={(value) => `$${value.toFixed(Math.max(0, 8 - Math.floor(Math.log10(Math.abs(value)))))}`} // Dynamic precision
+                tickFormatter={(value) => `$${value.toFixed(Math.max(0, 8 - Math.floor(Math.log10(Math.abs(value)))))}`} 
                 />
               <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 1, strokeDasharray: '3 3' }} />
               <Legend wrapperStyle={{ fontSize: '12px' }} />
@@ -267,7 +281,7 @@ export function TradeExecutionChart() {
                     x={new Date(trade.timestampOpen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     y={trade.entryPrice}
                     r={5}
-                    fill={trade.type === 'BUY' ? 'var(--chart-2)' : 'var(--chart-5)'} // Green for BUY, Red for SELL
+                    fill={trade.type === 'BUY' ? 'var(--chart-2)' : 'var(--chart-5)'} 
                     stroke="hsl(var(--background))"
                     ifOverflow="extendDomain"
                  >
@@ -280,7 +294,7 @@ export function TradeExecutionChart() {
                     x={new Date(trade.timestampClose!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     y={trade.exitPrice!}
                     r={5}
-                    fill={trade.type === 'BUY' ? 'var(--chart-5)' : 'var(--chart-2)'} // Red for BUY exit, Green for SELL exit (opposite of entry)
+                    fill={trade.type === 'BUY' ? 'var(--chart-5)' : 'var(--chart-2)'} 
                     stroke="hsl(var(--background))"
                     ifOverflow="extendDomain"
                  >
@@ -300,3 +314,5 @@ export function TradeExecutionChart() {
     </Card>
   );
 }
+
+    
