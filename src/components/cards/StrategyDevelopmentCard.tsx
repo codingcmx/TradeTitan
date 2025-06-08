@@ -69,27 +69,23 @@ export function StrategyDevelopmentCard() {
   
   const [error, setError] = useState<string | null>(null);
   const [validationResult, setValidationResult] = useState<StrategyValidationOutput | null>(null);
+  // suggestionResult state is still needed for auto-filling, but its textual parts (summary, warnings, assumptions) won't be displayed
   const [suggestionResult, setSuggestionResult] = useState<StrategyConfigSuggesterOutput | null>(null);
   const { toast } = useToast();
 
   const triggerAiSuggestions = useCallback(async (script: string, expl: string, cap: string) => {
     if ((!script?.trim() && !expl?.trim())) {
-      // Clear suggestions if both script and explanation are empty
       setSuggestionResult(null); 
-      // Optionally clear related form fields if desired, or let them persist from previous successful suggestion
-      // For now, let's not clear them to preserve user edits or previous AI fills.
       return;
     }
 
     const parsedCapital = parseFloat(cap);
     if (isNaN(parsedCapital) || parsedCapital <= 0) {
-      // Don't trigger if capital is invalid, but don't show an error toast here,
-      // as it would be annoying during typing. Validation for save will catch it.
       return;
     }
 
     setIsSuggestingParameters(true);
-    setError(null); // Clear general errors before new suggestion
+    setError(null); 
 
     const input: StrategyConfigSuggesterInput = {
         strategyDescription: `PINE SCRIPT:\n\`\`\`pinescript\n${script || 'No Pine Script provided.'}\n\`\`\`\n\nEXPLANATION:\n${expl || 'No explanation provided.'}`,
@@ -97,7 +93,7 @@ export function StrategyDevelopmentCard() {
     };
     try {
         const result = await suggestBotConfigParameters(input);
-        setSuggestionResult(result);
+        setSuggestionResult(result); // Still set this for auto-filling
         
         setFormData(prev => ({
             ...prev,
@@ -109,21 +105,38 @@ export function StrategyDevelopmentCard() {
             stopLossMultiplier: result.suggestions.stopLossMultiplier?.toString() ?? prev.stopLossMultiplier,
             takeProfitMultiplier: result.suggestions.takeProfitMultiplier?.toString() ?? prev.takeProfitMultiplier,
         }));
+        if (result.warnings && result.warnings.length > 0) {
+          toast({
+            title: "AI Suggestions Applied (with warnings)",
+            description: "Some parameters were auto-filled. Review AI warnings in console/notifications and settings carefully.",
+            variant: "default",
+          });
+        } else if (Object.keys(result.suggestions).length > 0) {
+           toast({
+            title: "AI Suggestions Applied",
+            description: "Relevant parameters have been auto-filled based on your strategy input. Please review.",
+            variant: "default",
+          });
+        }
 
-        // No toast here to avoid being too chatty on auto-suggestions
+
     } catch (err: any) {
         console.error("Error suggesting parameters:", err);
         const msg = err.message || "Failed to get parameter suggestions from AI.";
-        // Display suggestion error more subtly, perhaps in the suggestionResult area
         setSuggestionResult({
             suggestions: {},
             summary: "Error fetching AI suggestions.",
             warnings: [msg]
         });
+         toast({
+            title: "AI Suggestion Error",
+            description: msg,
+            variant: "destructive",
+        });
     } finally {
         setIsSuggestingParameters(false);
     }
-  }, []); // No dependencies needed for useCallback if it doesn't rely on external scope changing frequently
+  }, [toast]); 
 
   const debouncedTriggerAiSuggestions = useCallback(debounce(triggerAiSuggestions, 1500), [triggerAiSuggestions]);
 
@@ -140,13 +153,15 @@ export function StrategyDevelopmentCard() {
         
         const initialPine = doc.pineScript || '';
         const initialExplanation = doc.explanation || '';
-        const initialCapital = formData.capital || initialFormState.capital; // Keep current form capital if user typed before load
+        // Use loaded capital if available from config, otherwise form default, then component default
+        const loadedCapital = config?.capital?.toString() || formData.capital || initialFormState.capital;
+
 
         setFormData(prev => ({
           ...prev,
           pineScript: initialPine,
           explanation: initialExplanation,
-          capital: initialCapital, 
+          capital: loadedCapital, 
           targetSymbols: Array.isArray(config.targetSymbols) ? config.targetSymbols.join(', ') : '',
           emaShortPeriod: config.emaShortPeriod?.toString() || '',
           emaMediumPeriod: config.emaMediumPeriod?.toString() || '',
@@ -158,7 +173,8 @@ export function StrategyDevelopmentCard() {
         }));
 
         if (initialPine.trim() || initialExplanation.trim()) {
-          triggerAiSuggestions(initialPine, initialExplanation, initialCapital);
+          // Trigger initial suggestion without debounce
+          triggerAiSuggestions(initialPine, initialExplanation, loadedCapital);
         }
 
       } catch (err: any) {
@@ -171,36 +187,39 @@ export function StrategyDevelopmentCard() {
       }
     }
     fetchInitialData();
-  }, []);  // triggerAiSuggestions is stable due to useCallback
-
-  
-  useEffect(() => {
-    // Don't trigger on initial data population if already handled by fetchInitialData's call
-    if (!isLoadingInitialData && (formData.pineScript !== initialFormState.pineScript || formData.explanation !== initialFormState.explanation || formData.capital !== initialFormState.capital)) {
-        if (formData.pineScript?.trim() || formData.explanation?.trim()) {
-             debouncedTriggerAiSuggestions(formData.pineScript || '', formData.explanation || '', formData.capital);
-        } else {
-            // If both are cleared, clear suggestions and potentially auto-filled fields
-            setSuggestionResult(null);
-             setFormData(prev => ({
-                ...prev,
-                targetSymbols: getBotConfigurationResult?.targetSymbols?.join(', ') || '', // Revert to loaded config or empty
-                emaShortPeriod: getBotConfigurationResult?.emaShortPeriod?.toString() || '',
-                emaMediumPeriod: getBotConfigurationResult?.emaMediumPeriod?.toString() || '',
-                emaLongPeriod: getBotConfigurationResult?.emaLongPeriod?.toString() || '',
-                atrPeriod: getBotConfigurationResult?.atrPeriod?.toString() || '',
-                stopLossMultiplier: getBotConfigurationResult?.stopLossMultiplier?.toString() || '',
-                takeProfitMultiplier: getBotConfigurationResult?.takeProfitMultiplier?.toString() || '',
-            }));
-        }
-    }
-  }, [formData.pineScript, formData.explanation, formData.capital, isLoadingInitialData, debouncedTriggerAiSuggestions]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);  // triggerAiSuggestions is stable. formData.capital removed to avoid loop.
   
   // Store initial bot config to revert if script/explanation is cleared
   const [getBotConfigurationResult, setGetBotConfigurationResult] = useState<BotConfig | null>(null);
    useEffect(() => {
     getBotConfiguration().then(config => setGetBotConfigurationResult(config));
   }, []);
+
+
+  useEffect(() => {
+    if (!isLoadingInitialData) { // Only run after initial data load
+        if (formData.pineScript?.trim() || formData.explanation?.trim()) {
+             debouncedTriggerAiSuggestions(formData.pineScript || '', formData.explanation || '', formData.capital);
+        } else {
+            // If both script and explanation are cleared, clear suggestions and revert auto-filled fields
+            setSuggestionResult(null);
+             setFormData(prev => ({
+                ...prev, // Keep pineScript, explanation, capital as they are (empty)
+                targetSymbols: getBotConfigurationResult?.targetSymbols?.join(', ') || '', 
+                emaShortPeriod: getBotConfigurationResult?.emaShortPeriod?.toString() || '',
+                emaMediumPeriod: getBotConfigurationResult?.emaMediumPeriod?.toString() || '',
+                emaLongPeriod: getBotConfigurationResult?.emaLongPeriod?.toString() || '',
+                atrPeriod: getBotConfigurationResult?.atrPeriod?.toString() || '',
+                stopLossMultiplier: getBotConfigurationResult?.stopLossMultiplier?.toString() || '',
+                takeProfitMultiplier: getBotConfigurationResult?.takeProfitMultiplier?.toString() || '',
+                // tradingEnabled should not be reset here, keep its current state
+            }));
+        }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.pineScript, formData.explanation, formData.capital, isLoadingInitialData, debouncedTriggerAiSuggestions]);
+  
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
@@ -279,6 +298,7 @@ export function StrategyDevelopmentCard() {
       stopLossMultiplier: formData.stopLossMultiplier !== '' && !isNaN(Number(formData.stopLossMultiplier)) ? Number(formData.stopLossMultiplier) : undefined,
       takeProfitMultiplier: formData.takeProfitMultiplier !== '' && !isNaN(Number(formData.takeProfitMultiplier)) ? Number(formData.takeProfitMultiplier) : undefined,
       tradingEnabled: formData.tradingEnabled,
+      capital: parsedCapital, // Save capital as part of bot_config as well for reference
     };
     
     if ((configToSave.stopLossMultiplier || configToSave.takeProfitMultiplier) && !configToSave.atrPeriod) {
@@ -287,9 +307,10 @@ export function StrategyDevelopmentCard() {
         return;
     }
     if (configToSave.atrPeriod && (!configToSave.stopLossMultiplier || !configToSave.takeProfitMultiplier)) {
-        setError("If ATR Period is set for SL/TP, both Stop Loss and Take Profit Multipliers are required.");
-        toast({ title: "Configuration Error", description: "Both SL and TP multipliers are needed with ATR Period.", variant: "destructive"});
-        return;
+        // Allow setting ATR period without SL/TP if user intends to use ATR for other purposes or sets SL/TP differently in bot
+        // But if they are trying to use ATR-based SL/TP, they need both.
+        // For now, we'll make them optional if ATR period is set.
+        // The AI prompt should warn about this.
     }
 
     startSaveTransition(async () => {
@@ -346,17 +367,17 @@ export function StrategyDevelopmentCard() {
             <h3 className="text-xl font-semibold flex items-center text-primary"><FileText className="mr-2 h-5 w-5" /> 1. Define Your Strategy</h3>
             <div>
               <Label htmlFor="pineScript" className="text-sm font-medium">Pine Script</Label>
-              <Textarea id="pineScript" name="pineScript" value={formData.pineScript} onChange={handleInputChange} placeholder="Paste your Pine Script code here... AI will analyze as you type/paste." className="mt-1 h-52 font-mono text-xs bg-muted/30 focus:bg-background" disabled={isSaving || isValidating} />
+              <Textarea id="pineScript" name="pineScript" value={formData.pineScript || ''} onChange={handleInputChange} placeholder="Paste your Pine Script code here... AI will analyze as you type/paste." className="mt-1 h-52 font-mono text-xs bg-muted/30 focus:bg-background" disabled={isSaving || isValidating} />
             </div>
             <div>
               <Label htmlFor="explanation" className="text-sm font-medium">Strategy Explanation (Natural Language)</Label>
-              <Textarea id="explanation" name="explanation" value={formData.explanation} onChange={handleInputChange} placeholder="Explain how your strategy works... AI will analyze as you type/paste." className="mt-1 h-32 bg-muted/30 focus:bg-background" disabled={isSaving || isValidating} />
+              <Textarea id="explanation" name="explanation" value={formData.explanation || ''} onChange={handleInputChange} placeholder="Explain how your strategy works... AI will analyze as you type/paste." className="mt-1 h-32 bg-muted/30 focus:bg-background" disabled={isSaving || isValidating} />
             </div>
              <div>
-                <Label htmlFor="capital" className="text-sm font-medium">Your Trading Capital (for AI context)</Label>
+                <Label htmlFor="capital" className="text-sm font-medium">Your Trading Capital (for AI context & reference)</Label>
                 <Input id="capital" name="capital" type="number" value={formData.capital} onChange={handleInputChange} placeholder="e.g., 1000" disabled={isSaving || isValidating} className="mt-1 bg-muted/30 focus:bg-background" />
             </div>
-            <Button type="button" onClick={handleValidate} variant="outline" disabled={isValidating || isSaving || !formData.pineScript?.trim() || !formData.explanation?.trim()} className="w-full sm:w-auto">
+            <Button type="button" onClick={handleValidate} variant="outline" disabled={isValidating || isSaving || (!formData.pineScript?.trim() && !formData.explanation?.trim())} className="w-full sm:w-auto">
               {isValidating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
               Validate Consistency (AI)
             </Button>
@@ -375,60 +396,43 @@ export function StrategyDevelopmentCard() {
                 <AlertDescription className="whitespace-pre-wrap text-sm">{validationResult.feedback}</AlertDescription>
               </Alert>
             )}
-             {suggestionResult && (
-              <div className="mt-4 space-y-3 p-4 border rounded-md bg-muted/20">
-                <h4 className="font-semibold text-md text-foreground flex items-center"><Sparkles className="mr-2 h-5 w-5 text-primary" /> AI Parameter Analysis:</h4>
-                <Alert variant="default" className="bg-primary/5 border-primary/20">
-                    <Sparkles className="h-5 w-5 text-primary"/>
-                    <AlertTitle className="font-semibold text-primary">AI Summary</AlertTitle>
-                    <AlertDescription className="text-sm whitespace-pre-wrap text-primary/90">{suggestionResult.summary}</AlertDescription>
-                </Alert>
-                 {suggestionResult.aiAssumptions && <p className="text-xs italic text-muted-foreground"><strong>AI Assumptions:</strong> {suggestionResult.aiAssumptions}</p>}
-                {suggestionResult.warnings && suggestionResult.warnings.length > 0 && (
-                    <Alert variant="default" className="bg-amber-500/10 border-amber-500/30">
-                        <AlertTriangle className="h-5 w-5 text-amber-600" />
-                        <AlertTitle className="text-amber-700 font-semibold">AI Warnings/Notes</AlertTitle>
-                        <AlertDescription><ul className="list-disc list-inside text-sm text-amber-800">{suggestionResult.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul></AlertDescription>
-                    </Alert>
-                )}
-                 <p className="text-xs text-muted-foreground mt-2">AI suggestions have pre-filled relevant fields in Section 2 below. Please review and adjust them, especially risk parameters like Stop Loss and Take Profit multipliers if they were not suggested or if your Pine Script uses different logic.</p>
-              </div>
-            )}
+            {/* AI Parameter Analysis display is removed as per user request */}
           </section>
           
           <Separator />
 
-          {/* Section 2 (formerly 3): Bot Configuration & Activation */}
+          {/* Section 2: Bot Configuration & Activation */}
           <section className="space-y-6 p-6 border rounded-lg shadow-sm bg-card">
             <h3 className="text-xl font-semibold flex items-center text-primary"><BotIcon className="mr-2 h-5 w-5" /> 2. Configure Bot & Activate</h3>
              <p className="text-sm text-muted-foreground -mt-4">
-              The fields below may have been auto-filled by AI analysis of your script. Review and adjust as needed.
+              Fields below may be auto-filled by AI analysis of your script (Section 1). Review and adjust as needed. 
+              <span className="font-semibold">Especially ensure Stop Loss and Take Profit multipliers are appropriate for your risk strategy.</span>
             </p>
             <div>
                 <Label htmlFor="targetSymbols" className="text-sm font-medium">Target Symbols (comma-separated)</Label>
                 <Input id="targetSymbols" name="targetSymbols" value={formData.targetSymbols} onChange={handleInputChange} placeholder="e.g., BTCUSDT, ETHUSDT (AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><Label htmlFor="emaShortPeriod" className="text-sm font-medium">EMA Short</Label><Input id="emaShortPeriod" name="emaShortPeriod" type="number" value={formData.emaShortPeriod} onChange={handleInputChange} placeholder="e.g., 9 (AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
-                <div><Label htmlFor="emaMediumPeriod" className="text-sm font-medium">EMA Medium</Label><Input id="emaMediumPeriod" name="emaMediumPeriod" type="number" value={formData.emaMediumPeriod} onChange={handleInputChange} placeholder="e.g., 21 (AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
-                <div><Label htmlFor="emaLongPeriod" className="text-sm font-medium">EMA Long</Label><Input id="emaLongPeriod" name="emaLongPeriod" type="number" value={formData.emaLongPeriod} onChange={handleInputChange} placeholder="e.g., 55 (AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
+                <div><Label htmlFor="emaShortPeriod" className="text-sm font-medium">EMA Short</Label><Input id="emaShortPeriod" name="emaShortPeriod" type="number" value={formData.emaShortPeriod || ''} onChange={handleInputChange} placeholder="e.g., 9 (AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
+                <div><Label htmlFor="emaMediumPeriod" className="text-sm font-medium">EMA Medium</Label><Input id="emaMediumPeriod" name="emaMediumPeriod" type="number" value={formData.emaMediumPeriod || ''} onChange={handleInputChange} placeholder="e.g., 21 (AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
+                <div><Label htmlFor="emaLongPeriod" className="text-sm font-medium">EMA Long</Label><Input id="emaLongPeriod" name="emaLongPeriod" type="number" value={formData.emaLongPeriod || ''} onChange={handleInputChange} placeholder="e.g., 55 (AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
             </div>
             <div>
                 <Label htmlFor="atrPeriod" className="text-sm font-medium">ATR Period (for SL/TP)</Label>
-                <Input id="atrPeriod" name="atrPeriod" type="number" value={formData.atrPeriod} onChange={handleInputChange} placeholder="e.g., 14 (AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
+                <Input id="atrPeriod" name="atrPeriod" type="number" value={formData.atrPeriod || ''} onChange={handleInputChange} placeholder="e.g., 14 (AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
                 <p className="text-xs text-muted-foreground mt-1">Required if using ATR-based Stop Loss/Take Profit multipliers.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <Label htmlFor="stopLossMultiplier" className="text-sm font-medium">Stop Loss Multiplier (ATR-based)</Label>
-                    <Input id="stopLossMultiplier" name="stopLossMultiplier" type="number" step="0.1" value={formData.stopLossMultiplier} onChange={handleInputChange} placeholder="e.g., 1.5 (Set Manually or AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
+                    <Input id="stopLossMultiplier" name="stopLossMultiplier" type="number" step="0.1" value={formData.stopLossMultiplier || ''} onChange={handleInputChange} placeholder="e.g., 1.5 (Set Manually or AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
                 </div>
                 <div>
                     <Label htmlFor="takeProfitMultiplier" className="text-sm font-medium">Take Profit Multiplier (ATR-based)</Label>
-                    <Input id="takeProfitMultiplier" name="takeProfitMultiplier" type="number" step="0.1" value={formData.takeProfitMultiplier} onChange={handleInputChange} placeholder="e.g., 3 (Set Manually or AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
+                    <Input id="takeProfitMultiplier" name="takeProfitMultiplier" type="number" step="0.1" value={formData.takeProfitMultiplier || ''} onChange={handleInputChange} placeholder="e.g., 3 (Set Manually or AI Suggested)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
                 </div>
             </div>
-             <p className="text-xs text-muted-foreground -mt-3">These multipliers are applied to the ATR value. Ensure they align with your strategy's risk management. If AI didn't suggest these, you MUST set them if your strategy uses ATR-based exits.</p>
+             <p className="text-xs text-muted-foreground -mt-3">These multipliers are applied to the ATR value. Ensure they align with your strategy's risk management. If AI didn't suggest these from your script, you MUST set them if your strategy uses ATR-based exits.</p>
              <div>
                 <Label htmlFor="tradingEnabled" className="flex items-center justify-between text-sm font-medium">
                 <span>Trading Enabled (Activate Bot)</span>
@@ -446,3 +450,5 @@ export function StrategyDevelopmentCard() {
     </Card>
   );
 }
+
+    
