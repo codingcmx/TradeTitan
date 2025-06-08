@@ -35,7 +35,7 @@ export interface BotConfig {
   telegramChatId?: string;
   capital?: number;
   timeframe?: string; // e.g., '1m', '5m', '1h', '4h', '1d'
-  tradeAmountUSD?: number; // Desired trade size in USD per position
+  // tradeAmountUSD removed from here
   [key: string]: string | number | boolean | string[] | undefined;
 }
 
@@ -69,7 +69,7 @@ export interface HistoricalDataPoint {
 export interface BacktestInput {
   historicalDataCsv: string; // CSV string: timestamp,open,high,low,close(,volume)
   initialCapital: number;
-  tradeAmountPercentage: number; // e.g. 1 for 1% of capital per trade
+  tradeAmountUSD: number; // Changed from tradeAmountPercentage
   targetSymbolOverride?: string; // Optional: to specify which symbol in CSV if BotConfig has multiple targetSymbols
 }
 

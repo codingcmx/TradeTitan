@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState, useTransition, useCallback } from 'react';
+import { useEffect, useState, useTransition, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,24 +13,22 @@ import type { CustomStrategyDoc, BotConfig } from '@/types';
 import { getCustomStrategyDoc, getBotConfiguration } from '@/lib/firestoreService';
 import { validateStrategyConsistency, type StrategyValidationOutput } from '@/ai/flows/strategy-validator-flow';
 import { saveStrategyAndConfigurationAction } from '@/app/actions';
-import { Loader2, Save, FileText, Wand2, AlertTriangle, CheckCircle2, Bot as BotIcon, Info, Power, Clock, DollarSign } from 'lucide-react';
+import { Loader2, Save, FileText, Wand2, AlertTriangle, CheckCircle2, Bot as BotIcon, Info, Power, Clock, DollarSign, BrainCircuit } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// strategy-config-suggester-flow is no longer used for auto-filling here based on latest user feedback
 
-
-interface StrategyFormData extends CustomStrategyDoc {
-  capital: string;
-  targetSymbols: string;
-  emaShortPeriod?: number | string;
-  emaMediumPeriod?: number | string;
-  emaLongPeriod?: number | string;
-  atrPeriod?: number | string;
-  stopLossMultiplier?: number | string;
-  takeProfitMultiplier?: number | string;
-  tradingEnabled: boolean;
-  timeframe?: string;
-  tradeAmountUSD?: number | string;
+interface StrategyFormData extends CustomStrategyDoc, Partial<Omit<BotConfig, 'targetSymbols' | 'capital' | 'tradeAmountUSD' | 'emaShortPeriod' | 'emaMediumPeriod' | 'emaLongPeriod' | 'atrPeriod' | 'stopLossMultiplier' | 'takeProfitMultiplier'>> {
+  capital: string; // Keep as string for form input
+  targetSymbols: string; // Keep as string for form input
+  emaShortPeriod?: string;
+  emaMediumPeriod?: string;
+  emaLongPeriod?: string;
+  atrPeriod?: string;
+  stopLossMultiplier?: string;
+  takeProfitMultiplier?: string;
+  // tradeAmountUSD removed
 }
 
 const initialFormState: StrategyFormData = {
@@ -46,24 +44,14 @@ const initialFormState: StrategyFormData = {
   takeProfitMultiplier: '',
   tradingEnabled: false,
   timeframe: '1h',
-  tradeAmountUSD: '',
 };
 
 const availableTimeframes = [
-  { value: '1m', label: '1 Minute' },
-  { value: '3m', label: '3 Minutes' },
-  { value: '5m', label: '5 Minutes' },
-  { value: '15m', label: '15 Minutes' },
-  { value: '30m', label: '30 Minutes' },
-  { value: '1h', label: '1 Hour' },
-  { value: '2h', label: '2 Hours' },
-  { value: '4h', label: '4 Hours' },
-  { value: '6h', label: '6 Hours' },
-  { value: '8h', label: '8 Hours' },
-  { value: '12h', label: '12 Hours' },
-  { value: '1d', label: '1 Day' },
-  { value: '3d', label: '3 Days' },
-  { value: '1w', label: '1 Week' },
+  { value: '1m', label: '1 Minute' }, { value: '3m', label: '3 Minutes' }, { value: '5m', label: '5 Minutes' },
+  { value: '15m', label: '15 Minutes' }, { value: '30m', label: '30 Minutes' }, { value: '1h', label: '1 Hour' },
+  { value: '2h', label: '2 Hours' }, { value: '4h', label: '4 Hours' }, { value: '6h', label: '6 Hours' },
+  { value: '8h', label: '8 Hours' }, { value: '12h', label: '12 Hours' }, { value: '1d', label: '1 Day' },
+  { value: '3d', label: '3 Days' }, { value: '1w', label: '1 Week' },
 ];
 
 
@@ -74,56 +62,61 @@ export function StrategyDevelopmentCard() {
   const [isValidating, startValidationTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [validationResult, setValidationResult] = useState<StrategyValidationOutput | null>(null);
+  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false); // For validation, not parameter suggestion
+
   const { toast } = useToast();
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+
+  const loadInitialData = useCallback(async () => {
+    setIsLoadingInitialData(true);
+    setError(null);
+    try {
+      const [doc, config] = await Promise.all([
+        getCustomStrategyDoc(),
+        getBotConfiguration()
+      ]);
+
+      const newFormData: StrategyFormData = {
+        ...initialFormState, // Start with defaults
+        pineScript: doc.pineScript || '',
+        explanation: doc.explanation || '',
+        capital: config?.capital?.toString() || initialFormState.capital,
+        targetSymbols: Array.isArray(config.targetSymbols) ? config.targetSymbols.join(', ') : (config.targetSymbols || ''),
+        emaShortPeriod: config.emaShortPeriod?.toString() || '',
+        emaMediumPeriod: config.emaMediumPeriod?.toString() || '',
+        emaLongPeriod: config.emaLongPeriod?.toString() || '',
+        atrPeriod: config.atrPeriod?.toString() || '',
+        stopLossMultiplier: config.stopLossMultiplier?.toString() || '',
+        takeProfitMultiplier: config.takeProfitMultiplier?.toString() || '',
+        tradingEnabled: config.tradingEnabled || false,
+        timeframe: config.timeframe || initialFormState.timeframe,
+      };
+      setFormData(newFormData);
+
+    } catch (err: any) {
+      console.error("Error fetching initial strategy data:", err);
+      const msg = err.message || "Failed to load initial strategy data.";
+      setError(msg);
+      toast({ title: "Loading Error", description: msg, variant: "destructive" });
+    } finally {
+      setIsLoadingInitialData(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]); // Removed auto-analysis dependencies
 
   useEffect(() => {
-    async function fetchInitialData() {
-      setIsLoadingInitialData(true);
-      setError(null);
-      try {
-        const [doc, config] = await Promise.all([
-          getCustomStrategyDoc(),
-          getBotConfiguration()
-        ]);
-
-        setFormData(prev => ({
-          ...prev,
-          pineScript: doc.pineScript || '',
-          explanation: doc.explanation || '',
-          capital: config?.capital?.toString() || prev.capital || initialFormState.capital,
-          targetSymbols: Array.isArray(config.targetSymbols) ? config.targetSymbols.join(', ') : (config.targetSymbols || ''),
-          emaShortPeriod: config.emaShortPeriod?.toString() || '',
-          emaMediumPeriod: config.emaMediumPeriod?.toString() || '',
-          emaLongPeriod: config.emaLongPeriod?.toString() || '',
-          atrPeriod: config.atrPeriod?.toString() || '',
-          stopLossMultiplier: config.stopLossMultiplier?.toString() || '',
-          takeProfitMultiplier: config.takeProfitMultiplier?.toString() || '',
-          tradingEnabled: config.tradingEnabled || false,
-          timeframe: config.timeframe || initialFormState.timeframe,
-          tradeAmountUSD: config.tradeAmountUSD?.toString() || '',
-        }));
-
-      } catch (err: any) {
-        console.error("Error fetching initial strategy data:", err);
-        const msg = err.message || "Failed to load initial strategy data.";
-        setError(msg);
-        toast({ title: "Loading Error", description: "Could not load existing strategy data.", variant: "destructive" });
-      } finally {
-        setIsLoadingInitialData(false);
-      }
-    }
-    fetchInitialData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    loadInitialData();
+  }, [loadInitialData]);
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     if (name === 'pineScript' || name === 'explanation') {
-        setValidationResult(null);
+        setValidationResult(null); // Clear previous validation result
     }
-    setError(null);
+    setError(null); // Clear general errors on input change
   };
 
   const handleSwitchChange = (checked: boolean) => {
@@ -145,6 +138,7 @@ export function StrategyDevelopmentCard() {
       return;
     }
     startValidationTransition(async () => {
+      setIsAiAnalyzing(true);
       try {
         const result = await validateStrategyConsistency({
           pineScript: formData.pineScript || '',
@@ -161,17 +155,19 @@ export function StrategyDevelopmentCard() {
         const msg = err.message || "Failed to validate strategy with AI.";
         setError(msg);
         toast({ title: 'Validation AI Error', description: msg, variant: 'destructive' });
+      } finally {
+        setIsAiAnalyzing(false);
       }
     });
   };
 
   const checkRequiredFields = useCallback(() : boolean => {
     if (!formData.targetSymbols?.trim()) return false;
-    if (formData.atrPeriod === '' || isNaN(Number(formData.atrPeriod))) return false;
-    if (formData.stopLossMultiplier === '' || isNaN(Number(formData.stopLossMultiplier))) return false;
-    if (formData.takeProfitMultiplier === '' || isNaN(Number(formData.takeProfitMultiplier))) return false;
-    if (formData.tradeAmountUSD === '' || isNaN(Number(formData.tradeAmountUSD)) || Number(formData.tradeAmountUSD) <= 0) return false;
+    if (formData.atrPeriod === '' || formData.atrPeriod === undefined || isNaN(Number(formData.atrPeriod))) return false;
+    if (formData.stopLossMultiplier === '' || formData.stopLossMultiplier === undefined || isNaN(Number(formData.stopLossMultiplier))) return false;
+    if (formData.takeProfitMultiplier === '' || formData.takeProfitMultiplier === undefined || isNaN(Number(formData.takeProfitMultiplier))) return false;
     if (!formData.timeframe) return false;
+    // tradeAmountUSD check removed from here
     return true;
   }, [formData]);
 
@@ -187,23 +183,23 @@ export function StrategyDevelopmentCard() {
     }
 
     if (formData.tradingEnabled && !checkRequiredFields()) {
-        setError("Cannot enable trading. Please ensure Target Symbols, Timeframe, Trade Amount (USD), ATR Period, Stop Loss Multiplier, and Take Profit Multiplier are filled correctly.");
-        toast({ title: "Configuration Incomplete", description: "Required fields are missing to enable trading.", variant: "destructive"});
+        setError("Cannot enable trading. Please ensure Target Symbols, Timeframe, ATR Period, Stop Loss Multiplier, and Take Profit Multiplier are filled correctly.");
+        toast({ title: "Configuration Incomplete", description: "Required fields (*) are missing to enable trading.", variant: "destructive"});
         return;
     }
 
     const configToSave: BotConfig = {
       targetSymbols: formData.targetSymbols.split(',').map(s => s.trim()).filter(Boolean),
-      emaShortPeriod: formData.emaShortPeriod !== '' && !isNaN(Number(formData.emaShortPeriod)) ? Number(formData.emaShortPeriod) : undefined,
-      emaMediumPeriod: formData.emaMediumPeriod !== '' && !isNaN(Number(formData.emaMediumPeriod)) ? Number(formData.emaMediumPeriod) : undefined,
-      emaLongPeriod: formData.emaLongPeriod !== '' && !isNaN(Number(formData.emaLongPeriod)) ? Number(formData.emaLongPeriod) : undefined,
-      atrPeriod: formData.atrPeriod !== '' && !isNaN(Number(formData.atrPeriod)) ? Number(formData.atrPeriod) : undefined,
-      stopLossMultiplier: formData.stopLossMultiplier !== '' && !isNaN(Number(formData.stopLossMultiplier)) ? Number(formData.stopLossMultiplier) : undefined,
-      takeProfitMultiplier: formData.takeProfitMultiplier !== '' && !isNaN(Number(formData.takeProfitMultiplier)) ? Number(formData.takeProfitMultiplier) : undefined,
+      emaShortPeriod: formData.emaShortPeriod !== '' && formData.emaShortPeriod !== undefined && !isNaN(Number(formData.emaShortPeriod)) ? Number(formData.emaShortPeriod) : undefined,
+      emaMediumPeriod: formData.emaMediumPeriod !== '' && formData.emaMediumPeriod !== undefined && !isNaN(Number(formData.emaMediumPeriod)) ? Number(formData.emaMediumPeriod) : undefined,
+      emaLongPeriod: formData.emaLongPeriod !== '' && formData.emaLongPeriod !== undefined && !isNaN(Number(formData.emaLongPeriod)) ? Number(formData.emaLongPeriod) : undefined,
+      atrPeriod: formData.atrPeriod !== '' && formData.atrPeriod !== undefined && !isNaN(Number(formData.atrPeriod)) ? Number(formData.atrPeriod) : undefined,
+      stopLossMultiplier: formData.stopLossMultiplier !== '' && formData.stopLossMultiplier !== undefined && !isNaN(Number(formData.stopLossMultiplier)) ? Number(formData.stopLossMultiplier) : undefined,
+      takeProfitMultiplier: formData.takeProfitMultiplier !== '' && formData.takeProfitMultiplier !== undefined && !isNaN(Number(formData.takeProfitMultiplier)) ? Number(formData.takeProfitMultiplier) : undefined,
       tradingEnabled: formData.tradingEnabled,
       capital: parsedCapital,
       timeframe: formData.timeframe,
-      tradeAmountUSD: formData.tradeAmountUSD !== '' && !isNaN(Number(formData.tradeAmountUSD)) ? Number(formData.tradeAmountUSD) : undefined,
+      // tradeAmountUSD removed
     };
 
     startSaveTransition(async () => {
@@ -215,12 +211,14 @@ export function StrategyDevelopmentCard() {
 
       if (result.success) {
         toast({ title: 'Success', description: "Strategy and bot configuration saved! Bot status in header should update shortly." });
-        const updatedConfig = await getBotConfiguration();
+        // Re-fetch or update state to reflect server-side changes (especially if validation forced tradingEnabled to false)
+        const updatedConfig = await getBotConfiguration(); // Re-fetch
         setFormData(prev => ({
-            ...prev,
-            pineScript: formData.pineScript || '', // keep current script/explanation
+            ...prev, // Keep current form values for Pine/explanation
+            pineScript: formData.pineScript || '',
             explanation: formData.explanation || '',
-            tradingEnabled: updatedConfig.tradingEnabled || false,
+            // Update config part from fetched data
+            capital: updatedConfig.capital?.toString() || prev.capital,
             targetSymbols: Array.isArray(updatedConfig.targetSymbols) ? updatedConfig.targetSymbols.join(', ') : (updatedConfig.targetSymbols || ''),
             emaShortPeriod: updatedConfig.emaShortPeriod?.toString() || '',
             emaMediumPeriod: updatedConfig.emaMediumPeriod?.toString() || '',
@@ -228,28 +226,29 @@ export function StrategyDevelopmentCard() {
             atrPeriod: updatedConfig.atrPeriod?.toString() || '',
             stopLossMultiplier: updatedConfig.stopLossMultiplier?.toString() || '',
             takeProfitMultiplier: updatedConfig.takeProfitMultiplier?.toString() || '',
-            capital: updatedConfig.capital?.toString() || prev.capital,
+            tradingEnabled: updatedConfig.tradingEnabled || false,
             timeframe: updatedConfig.timeframe || initialFormState.timeframe,
-            tradeAmountUSD: updatedConfig.tradeAmountUSD?.toString() || '',
         }));
+
       } else {
         toast({ title: 'Error Saving', description: result.message || 'An unknown error occurred during save.', variant: 'destructive' });
         setError(result.message || 'Failed to save.');
+         // If save failed due to server-side validation (e.g. forced tradingEnabled to false), reflect that
+        if (result.message && result.message.includes("Cannot enable trading")) {
+            setFormData(prev => ({ ...prev, tradingEnabled: false }));
+        }
       }
     });
   };
 
   useEffect(() => {
-    // This effect is to re-check required fields if tradingEnabled is toggled ON
-    // and provide immediate feedback if something is missing.
     if (formData.tradingEnabled && !checkRequiredFields()) {
       setError("Required fields (*) must be filled to enable trading.");
     } else if (error === "Required fields (*) must be filled to enable trading.") {
-      // Clear the specific error if fields are now filled
       setError(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.tradingEnabled, checkRequiredFields]);
+  }, [formData.tradingEnabled, formData.targetSymbols, formData.atrPeriod, formData.stopLossMultiplier, formData.takeProfitMultiplier, formData.timeframe]);
 
 
   if (isLoadingInitialData) {
@@ -267,7 +266,7 @@ export function StrategyDevelopmentCard() {
     );
   }
 
-  const isSaveDisabled = isSaving || isValidating || isLoadingInitialData;
+  const isActionDisabled = isSaving || isValidating || isLoadingInitialData || isAiAnalyzing;
   const areRequiredFieldsMissingForActivation = formData.tradingEnabled && !checkRequiredFields();
 
 
@@ -276,7 +275,7 @@ export function StrategyDevelopmentCard() {
       <CardHeader>
         <CardTitle className="flex items-center"><BotIcon className="mr-2 h-6 w-6 text-primary" /> Bot & Strategy Hub</CardTitle>
         <CardDescription>
-          Define your strategy, validate consistency with AI, then configure and activate your backend bot.
+          Define your strategy, validate its consistency with AI, then manually configure and activate your backend bot.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -295,21 +294,25 @@ export function StrategyDevelopmentCard() {
             <h3 className="text-xl font-semibold flex items-center text-primary"><FileText className="mr-2 h-5 w-5" /> 1. Define Your Strategy</h3>
             <div>
               <Label htmlFor="pineScript" className="text-sm font-medium">Pine Script</Label>
-              <Textarea id="pineScript" name="pineScript" value={formData.pineScript || ''} onChange={handleInputChange} placeholder="Paste your Pine Script code here..." className="mt-1 h-52 font-mono text-xs bg-muted/30 focus:bg-background" disabled={isSaving || isValidating} />
+              <Textarea id="pineScript" name="pineScript" value={formData.pineScript || ''} onChange={handleInputChange} placeholder="Paste your Pine Script code here..." className="mt-1 h-52 font-mono text-xs bg-muted/30 focus:bg-background" disabled={isActionDisabled} />
             </div>
             <div>
               <Label htmlFor="explanation" className="text-sm font-medium">Strategy Explanation (Natural Language)</Label>
-              <Textarea id="explanation" name="explanation" value={formData.explanation || ''} onChange={handleInputChange} placeholder="Explain how your strategy works (indicators, entry/exit conditions, risk management ideas, etc.)..." className="mt-1 h-32 bg-muted/30 focus:bg-background" disabled={isSaving || isValidating} />
+              <Textarea id="explanation" name="explanation" value={formData.explanation || ''} onChange={handleInputChange} placeholder="Explain how your strategy works (indicators, entry/exit conditions, risk management ideas, etc.)..." className="mt-1 h-32 bg-muted/30 focus:bg-background" disabled={isActionDisabled} />
             </div>
              <div>
                 <Label htmlFor="capital" className="text-sm font-medium">Your Trading Capital (USD - for bot context)</Label>
-                <Input id="capital" name="capital" type="number" value={formData.capital} onChange={handleInputChange} placeholder="e.g., 1000" disabled={isSaving || isValidating} className="mt-1 bg-muted/30 focus:bg-background" />
+                <Input id="capital" name="capital" type="number" value={formData.capital} onChange={handleInputChange} placeholder="e.g., 1000" disabled={isActionDisabled} className="mt-1 bg-muted/30 focus:bg-background" />
                  <p className="text-xs text-muted-foreground mt-1">This value is saved for your bot's reference. Actual trade sizing logic is handled by your backend bot.</p>
             </div>
-            <Button type="button" onClick={handleValidate} variant="outline" disabled={isValidating || isSaving || (!formData.pineScript?.trim() && !formData.explanation?.trim())} className="w-full sm:w-auto">
-              {isValidating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
-              Validate Consistency (AI)
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-4 items-center">
+                <Button type="button" onClick={handleValidate} variant="outline" disabled={isActionDisabled || (!formData.pineScript?.trim() && !formData.explanation?.trim())} className="w-full sm:w-auto">
+                {isValidating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+                Validate Consistency (AI)
+                </Button>
+                {isAiAnalyzing && <span className="text-sm text-muted-foreground flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />AI is analyzing...</span>}
+            </div>
+
             {validationResult && (
               <Alert variant={validationResult.isConsistent ? "default" : "destructive"} className={`mt-3 ${validationResult.isConsistent ? "bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-300" : "bg-yellow-500/10 border-yellow-500/30 text-yellow-700 dark:text-yellow-300"}`}>
                 <AlertTitle className="flex items-center font-semibold">
@@ -331,6 +334,7 @@ export function StrategyDevelopmentCard() {
                 <AlertTitle className="font-semibold">Manual Configuration Required</AlertTitle>
                 <AlertDescription>
                 Manually enter all parameters for your bot below. These exact settings will be saved to Firestore and used by your backend trading bot.
+                Your Pine Script is for documentation and AI validation; it is not directly executed by the backend.
                 Ensure Stop Loss and Take Profit multipliers reflect your strategy's risk management.
                 </AlertDescription>
             </Alert>
@@ -353,12 +357,7 @@ export function StrategyDevelopmentCard() {
                     </Select>
                 </div>
             </div>
-             <div>
-                <Label htmlFor="tradeAmountUSD" className="text-sm font-medium">Trade Amount (USD) per Position <span className="text-red-500">*</span></Label>
-                <Input id="tradeAmountUSD" name="tradeAmountUSD" type="number" value={formData.tradeAmountUSD || ''} onChange={handleInputChange} placeholder="e.g., 100 (for $100 per trade)" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" />
-                <p className="text-xs text-muted-foreground mt-1">Your backend bot must be programmed to use this USD amount to calculate asset quantity per trade.</p>
-            </div>
-
+            {/* tradeAmountUSD input removed from here */}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div><Label htmlFor="emaShortPeriod" className="text-sm font-medium">EMA Short Period</Label><Input id="emaShortPeriod" name="emaShortPeriod" type="number" value={formData.emaShortPeriod || ''} onChange={handleInputChange} placeholder="e.g., 9" disabled={isSaving} className="mt-1 bg-muted/30 focus:bg-background" /></div>
@@ -393,7 +392,7 @@ export function StrategyDevelopmentCard() {
                  </p>
             </div>
 
-            <Button type="submit" disabled={isSaveDisabled} className="w-full text-base py-3 h-12">
+            <Button type="submit" disabled={isActionDisabled} className="w-full text-base py-3 h-12">
               {isSaving ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="mr-2 h-5 w-5" />}
               Save Strategy & Bot Configuration
             </Button>

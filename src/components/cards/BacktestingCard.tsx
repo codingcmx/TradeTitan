@@ -25,7 +25,7 @@ import { Badge } from '@/components/ui/badge';
 export function BacktestingCard() {
   const [historicalDataCsv, setHistoricalDataCsv] = useState('');
   const [initialCapital, setInitialCapital] = useState('10000');
-  const [tradeAmountPercentage, setTradeAmountPercentage] = useState('1'); // 1% of capital
+  const [tradeAmountUSD, setTradeAmountUSD] = useState('100'); // Changed from percentage
   const [targetSymbolOverride, setTargetSymbolOverride] = useState('');
   
   const [backtestResult, setBacktestResult] = useState<BacktestOutput | null>(null);
@@ -44,24 +44,24 @@ export function BacktestingCard() {
       return;
     }
     const parsedCapital = parseFloat(initialCapital);
-    const parsedTradePercentage = parseFloat(tradeAmountPercentage);
+    const parsedTradeAmountUSD = parseFloat(tradeAmountUSD);
 
     if (isNaN(parsedCapital) || parsedCapital <= 0) {
       setError('Initial capital must be a positive number.');
       toast({ title: 'Input Error', description: 'Initial capital must be a positive number.', variant: 'destructive' });
       return;
     }
-    if (isNaN(parsedTradePercentage) || parsedTradePercentage <= 0 || parsedTradePercentage > 100) {
-      setError('Trade amount percentage must be between 0.01 and 100.');
-      toast({ title: 'Input Error', description: 'Trade amount percentage is invalid.', variant: 'destructive' });
+    if (isNaN(parsedTradeAmountUSD) || parsedTradeAmountUSD <= 0) {
+      setError('Trade amount (USD) must be a positive number.');
+      toast({ title: 'Input Error', description: 'Trade amount (USD) must be a positive number.', variant: 'destructive' });
       return;
     }
 
     const input: BacktestInput = {
       historicalDataCsv,
       initialCapital: parsedCapital,
-      tradeAmountPercentage: parsedTradePercentage,
-      targetSymbolOverride: targetSymbolOverride.trim() || undefined,
+      tradeAmountUSD: parsedTradeAmountUSD, // Using USD amount
+      targetSymbolOverride: targetSymbolOverride.trim().toUpperCase() || undefined,
     };
 
     startTransition(async () => {
@@ -121,8 +121,8 @@ export function BacktestingCard() {
               <Input id="initialCapital" type="number" value={initialCapital} onChange={(e) => setInitialCapital(e.target.value)} placeholder="e.g., 10000" disabled={isPending} className="mt-1" />
             </div>
             <div>
-              <Label htmlFor="tradeAmountPercentage">Trade Size (% of Capital)</Label>
-              <Input id="tradeAmountPercentage" type="number" step="0.1" value={tradeAmountPercentage} onChange={(e) => setTradeAmountPercentage(e.target.value)} placeholder="e.g., 1 (for 1%)" disabled={isPending} className="mt-1" />
+              <Label htmlFor="tradeAmountUSD">Trade Amount (USD) per Backtest Trade</Label>
+              <Input id="tradeAmountUSD" type="number" step="0.01" value={tradeAmountUSD} onChange={(e) => setTradeAmountUSD(e.target.value)} placeholder="e.g., 100" disabled={isPending} className="mt-1" />
             </div>
             <div>
               <Label htmlFor="targetSymbolOverride">Target Symbol (Optional)</Label>

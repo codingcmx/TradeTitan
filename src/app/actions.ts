@@ -17,7 +17,7 @@ export async function saveStrategyAndConfigurationAction(
   try {
     // Validate essential parameters if trading is being enabled
     if (data.configToSave.tradingEnabled) {
-      const { targetSymbols, atrPeriod, stopLossMultiplier, takeProfitMultiplier, timeframe, tradeAmountUSD } = data.configToSave;
+      const { targetSymbols, atrPeriod, stopLossMultiplier, takeProfitMultiplier, timeframe } = data.configToSave; // tradeAmountUSD removed from validation
       let errors = [];
       if (!targetSymbols || targetSymbols.length === 0) {
         errors.push('Target Symbols are required.');
@@ -25,9 +25,7 @@ export async function saveStrategyAndConfigurationAction(
       if (!timeframe) {
         errors.push('Trading Timeframe is required.');
       }
-      if (tradeAmountUSD === undefined || tradeAmountUSD === null || isNaN(Number(tradeAmountUSD)) || Number(tradeAmountUSD) <= 0) {
-        errors.push('Trade Amount (USD) must be a positive number.');
-      }
+      // tradeAmountUSD validation removed
       if (atrPeriod === undefined || atrPeriod === null || isNaN(Number(atrPeriod))) {
         errors.push('ATR Period is required and must be a number.');
       }
@@ -39,6 +37,7 @@ export async function saveStrategyAndConfigurationAction(
       }
 
       if (errors.length > 0) {
+        // Save the configuration but force tradingEnabled to false
         await updateBotConfiguration({ ...data.configToSave, tradingEnabled: false });
         return { success: false, message: `Cannot enable trading: ${errors.join(' ')} Configuration saved with trading disabled.` };
       }
@@ -57,11 +56,14 @@ export async function saveStrategyAndConfigurationAction(
     // 2. Save Bot Configuration
     const botConfigSaveResult = await updateBotConfiguration(data.configToSave);
     if (!botConfigSaveResult.success) {
+      // If bot config save fails, the strategy doc was still saved.
+      // This could be handled differently, e.g., by trying to roll back the strategy doc save,
+      // but for now, we'll report the partial success/failure.
       return { success: false, message: botConfigSaveResult.message || 'Strategy document saved, but failed to save bot configuration.' };
     }
 
-    revalidatePath('/');
-    revalidatePath('/dashboard');
+    revalidatePath('/'); // Revalidate the main page or specific dashboard paths
+    revalidatePath('/dashboard'); // If you have a /dashboard route
     return { success: true, message: 'Strategy and bot configuration saved successfully!' };
 
   } catch (error: any) {
@@ -87,16 +89,17 @@ export async function saveBotConfigurationAction(
       takeProfitMultiplier: formData.get('takeProfitMultiplier') ? Number(formData.get('takeProfitMultiplier')) : undefined,
       tradingEnabled: formData.get('tradingEnabled') === 'on',
       timeframe: formData.get('timeframe') as string || undefined,
-      tradeAmountUSD: formData.get('tradeAmountUSD') ? Number(formData.get('tradeAmountUSD')) : undefined,
+      // tradeAmountUSD removed
     };
 
+    // Clean up undefined or NaN numeric fields
     for (const key in newConfig) {
       const k = key as keyof BotConfig;
       if (newConfig[k] === undefined) {
         delete newConfig[k];
       }
       if ( (typeof newConfig[k] === 'number' && isNaN(newConfig[k] as number)) ) {
-         delete newConfig[k];
+         delete newConfig[k]; // Remove if it's NaN
       }
     }
 
@@ -104,7 +107,7 @@ export async function saveBotConfigurationAction(
 
     if (result.success) {
       revalidatePath('/');
-      const updatedConfig = await getBotConfiguration();
+      const updatedConfig = await getBotConfiguration(); // Fetch the potentially modified config
       return { success: true, message: 'Configuration saved successfully!', updatedConfig };
     } else {
       return { success: false, message: result.message || 'Failed to save configuration.' };
