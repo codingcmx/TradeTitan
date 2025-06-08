@@ -2,12 +2,13 @@
 import { Header } from '@/components/layout/Header';
 import { TradeHistoryCard } from '@/components/cards/TradeHistoryCard';
 import { StrategyDevelopmentCard } from '@/components/cards/StrategyDevelopmentCard';
-import { StrategyAssistantCard } from '@/components/cards/StrategyAssistantCard'; // Reinstated
+import { StrategyAssistantCard } from '@/components/cards/StrategyAssistantCard';
 import { StatCard } from '@/components/cards/StatCard';
 import { AccountBalanceCard } from '@/components/cards/AccountBalanceCard';
 import { PlaceTradeCard } from '@/components/cards/PlaceTradeCard';
+import { BacktestingCard } from '@/components/cards/BacktestingCard'; // Added
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { History, DollarSign, Percent, BarChart2, Send, Combine, Bot, Lightbulb } from 'lucide-react'; // Added Lightbulb
+import { History, DollarSign, Percent, BarChart2, Send, Bot, Lightbulb, SlidersHorizontal } from 'lucide-react';
 import { getKeyMetrics } from '@/lib/firestoreService'; 
 import type { KeyMetric } from '@/types';
 
@@ -41,15 +42,18 @@ export default async function DashboardPage() {
         </div>
 
         <Tabs defaultValue="actions" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 mb-4 bg-card border border-border shadow-sm">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-4 bg-card border border-border shadow-sm">
             <TabsTrigger value="actions" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
-              <Send className="mr-2 h-5 w-5" /> Actions
+              <Send className="mr-2 h-5 w-5" /> Actions &amp; Analysis
             </TabsTrigger>
             <TabsTrigger value="history" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
               <History className="mr-2 h-5 w-5" /> Trade History
             </TabsTrigger>
-             <TabsTrigger value="strategyLab" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
+             <TabsTrigger value="strategyHub" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
               <Bot className="mr-2 h-5 w-5" /> Bot & Strategy Hub
+            </TabsTrigger>
+            <TabsTrigger value="backtesting" className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground">
+              <SlidersHorizontal className="mr-2 h-5 w-5" /> Backtesting
             </TabsTrigger>
           </TabsList>
 
@@ -64,10 +68,15 @@ export default async function DashboardPage() {
             {/* @ts-expect-error Server Component */}
             <TradeHistoryCard />
           </TabsContent>
-          <TabsContent value="strategyLab">
+          <TabsContent value="strategyHub">
             <div className="grid gap-4 md:grid-cols-1">
               {/* @ts-expect-error Server Component */}
               <StrategyDevelopmentCard />
+            </div>
+          </TabsContent>
+          <TabsContent value="backtesting">
+            <div className="grid gap-4 md:grid-cols-1">
+              <BacktestingCard />
             </div>
           </TabsContent>
         </Tabs>
@@ -78,4 +87,3 @@ export default async function DashboardPage() {
     </div>
   );
 }
-    

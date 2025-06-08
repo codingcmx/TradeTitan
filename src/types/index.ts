@@ -33,22 +33,20 @@ export interface BotConfig {
   takeProfitMultiplier?: number;
   tradingEnabled?: boolean;
   telegramChatId?: string;
-  capital?: number; // Added capital for bot reference
-  // Allow any other string-keyed properties for flexibility
+  capital?: number; 
   [key: string]: string | number | boolean | string[] | undefined;
 }
 
 export interface KeyMetric {
   label: string;
   value: string | number;
-  change?: string; // e.g., "+5%"
+  change?: string; 
   changeType?: 'positive' | 'negative' | 'neutral';
 }
 
 export interface AccountBalance {
   usdtBalance: number;
-  totalEquity: number; // Example of another balance metric
-  // Add other relevant balance fields here
+  totalEquity: number; 
 }
 
 export interface CustomStrategyDoc {
@@ -56,8 +54,55 @@ export interface CustomStrategyDoc {
   explanation?: string;
 }
 
-// Removed types related to StrategyConfigSuggester as the flow is deleted:
-// - StrategyConfigSuggesterInput
-// - SuggestedBotConfig
-// - StrategyConfigSuggesterOutput
+// Types for Backtesting Feature
+export interface HistoricalDataPoint {
+  timestamp: number; // Unix timestamp (ms)
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
 
+export interface BacktestInput {
+  historicalDataCsv: string; // CSV string: timestamp,open,high,low,close(,volume)
+  initialCapital: number;
+  tradeAmountPercentage: number; // e.g. 1 for 1% of capital per trade
+  targetSymbolOverride?: string; // Optional: to specify which symbol in CSV if BotConfig has multiple targetSymbols
+}
+
+export interface BacktestSimulatedTrade {
+  symbol: string;
+  type: 'BUY' | 'SELL';
+  entryTimestamp: number;
+  entryPrice: number;
+  exitTimestamp?: number;
+  exitPrice?: number;
+  quantity: number;
+  pnl?: number; // Profit or Loss for this trade
+  pnlPercentage?: number; // PnL as a percentage of entry value or capital used
+  reasonEntry?: string;
+  reasonExit?: string;
+  highestPriceReached?: number; // During long trade
+  lowestPriceReached?: number;  // During short trade
+}
+
+export interface BacktestOutput {
+  summary?: string; // LLM generated summary if we add it later
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRate: number; // Percentage
+  averageWinAmount?: number;
+  averageLossAmount?: number;
+  profitFactor?: number; // Gross profit / Gross loss (absolute)
+  netProfit: number;
+  netProfitPercentage: number; // Net profit as % of initial capital
+  maxDrawdown?: number; // Max drawdown as a percentage of capital (optional, harder to implement simply)
+  simulatedTrades: BacktestSimulatedTrade[];
+  initialCapital: number;
+  finalCapital: number;
+  errorMessage?: string;
+  configUsed?: BotConfig; // To show what config was used for the backtest
+  symbolTested: string;
+}

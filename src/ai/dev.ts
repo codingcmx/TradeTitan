@@ -5,5 +5,5 @@ import './flows/trade-flow';
 import './flows/market-data-flow';
 import './flows/strategy-assistant-flow'; 
 import './flows/strategy-validator-flow';
-// Removed: import './flows/strategy-config-suggester-flow';
+import './flows/backtest-flow'; // Added backtest flow
     
