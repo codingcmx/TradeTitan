@@ -54,3 +54,24 @@ export interface CustomStrategyDoc {
   pineScript?: string;
   explanation?: string;
 }
+
+// Types for AI Configuration Suggester
+export interface StrategyConfigSuggesterInput {
+  strategyDescription: string;
+  capital: number;
+}
+
+export interface SuggestedBotConfig {
+  targetSymbols?: string[];
+  emaShortPeriod?: number;
+  emaMediumPeriod?: number;
+  emaLongPeriod?: number;
+  atrPeriod?: number;
+}
+
+export interface StrategyConfigSuggesterOutput {
+  suggestions: SuggestedBotConfig;
+  aiAssumptions?: string;
+  warnings?: string[];
+  summary: string;
+}

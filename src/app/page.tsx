@@ -1,8 +1,10 @@
 
+
 import { Header } from '@/components/layout/Header';
 import { TradeHistoryCard } from '@/components/cards/TradeHistoryCard';
 import { BotConfigCard } from '@/components/cards/BotConfigCard';
 import { StrategyAssistantCard } from '@/components/cards/StrategyAssistantCard';
+import { AiConfigSuggesterCard } from '@/components/cards/AiConfigSuggesterCard';
 import { StatCard } from '@/components/cards/StatCard';
 import { AccountBalanceCard } from '@/components/cards/AccountBalanceCard';
 import { PlaceTradeCard } from '@/components/cards/PlaceTradeCard';
@@ -72,13 +74,16 @@ export default async function DashboardPage() {
             </div>
           </TabsContent>
           <TabsContent value="config">
-            <div className="grid gap-8 md:grid-cols-1 lg:grid-cols-2">
+            <div className="grid gap-8 md:grid-cols-1 lg:grid-cols-1"> {/* Changed to 1 column for better layout with more cards */}
               <div>
                 {/* @ts-expect-error Server Component */}
                 <BotConfigCard />
               </div>
               <div>
                 <StrategyAssistantCard />
+              </div>
+              <div>
+                <AiConfigSuggesterCard />
               </div>
             </div>
           </TabsContent>
