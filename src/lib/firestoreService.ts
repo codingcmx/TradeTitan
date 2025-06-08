@@ -3,9 +3,11 @@ import type { Trade, BotLog, BotConfig, CustomStrategyDoc } from '@/types';
 import { db } from './firebase'; 
 import { collection, getDocs, query, orderBy, limit, doc, getDoc, setDoc } from 'firebase/firestore';
 
+const UNINITIALIZED_ERROR_MESSAGE = "Firestore is not initialized. Please ensure Firebase environment variables (especially NEXT_PUBLIC_FIREBASE_PROJECT_ID) are correctly set for the server environment.";
+
 export async function getTradeHistory(count: number = 20): Promise<Trade[]> {
   if (!db) {
-    console.warn("Firestore is not initialized. Returning empty trade history.");
+    console.warn(UNINITIALIZED_ERROR_MESSAGE + " Returning empty trade history.");
     return Promise.resolve([]);
   }
   try {
@@ -29,7 +31,7 @@ export async function getTradeHistory(count: number = 20): Promise<Trade[]> {
 
 export async function getBotLogs(count: number = 50): Promise<BotLog[]> {
   if (!db) {
-    console.warn("Firestore is not initialized. Returning empty bot logs.");
+    console.warn(UNINITIALIZED_ERROR_MESSAGE + " Returning empty bot logs.");
     return Promise.resolve([]);
   }
   try {
@@ -52,7 +54,7 @@ export async function getBotLogs(count: number = 50): Promise<BotLog[]> {
 
 export async function getBotConfiguration(): Promise<BotConfig> {
   if (!db) {
-    console.warn("Firestore is not initialized. Returning empty bot configuration.");
+    console.warn(UNINITIALIZED_ERROR_MESSAGE + " Returning empty bot configuration.");
     return Promise.resolve({});
   }
   try {
@@ -79,8 +81,8 @@ export async function getBotConfiguration(): Promise<BotConfig> {
 
 export async function updateBotConfiguration(newConfig: Partial<BotConfig>): Promise<{success: boolean; message?: string}> {
   if (!db) {
-    console.error("Firestore is not initialized. Cannot update bot configuration.");
-    return { success: false, message: "Firestore is not initialized." };
+    console.error(UNINITIALIZED_ERROR_MESSAGE);
+    return { success: false, message: UNINITIALIZED_ERROR_MESSAGE };
   }
   try {
     const configRef = doc(db, 'bot_config', 'main');
@@ -123,6 +125,10 @@ export async function updateBotConfiguration(newConfig: Partial<BotConfig>): Pro
 
 
 export async function getKeyMetrics(): Promise<{ totalPnl: number; winRate: number; totalTrades: number }> {
+  if (!db) {
+    console.warn(UNINITIALIZED_ERROR_MESSAGE + " Returning default key metrics.");
+    return { totalPnl: 0, winRate: 0, totalTrades: 0 };
+  }
   const trades = await getTradeHistory(1000); 
   const closedTrades = trades.filter(t => t.status !== 'OPEN' && t.pnl !== undefined);
   const totalPnl = closedTrades.reduce((sum, trade) => sum + (trade.pnl || 0), 0);
@@ -138,7 +144,7 @@ export async function getKeyMetrics(): Promise<{ totalPnl: number; winRate: numb
 // Functions for Custom Strategy Document
 export async function getCustomStrategyDoc(): Promise<CustomStrategyDoc> {
   if (!db) {
-    console.warn("Firestore is not initialized. Returning empty custom strategy document.");
+    console.warn(UNINITIALIZED_ERROR_MESSAGE + " Returning empty custom strategy document.");
     return Promise.resolve({ pineScript: '', explanation: '' });
   }
   try {
@@ -157,8 +163,8 @@ export async function getCustomStrategyDoc(): Promise<CustomStrategyDoc> {
 
 export async function updateCustomStrategyDoc(docData: CustomStrategyDoc): Promise<{success: boolean; message?: string}> {
   if (!db) {
-    console.error("Firestore is not initialized. Cannot update custom strategy document.");
-    return { success: false, message: "Firestore is not initialized." };
+    console.error(UNINITIALIZED_ERROR_MESSAGE);
+    return { success: false, message: UNINITIALIZED_ERROR_MESSAGE };
   }
   try {
     const docRef = doc(db, 'custom_strategy_doc', 'main');
@@ -169,3 +175,4 @@ export async function updateCustomStrategyDoc(docData: CustomStrategyDoc): Promi
     return { success: false, message: `Failed to update custom strategy document: ${error.message}` };
   }
 }
+
